@@ -1,0 +1,24 @@
+# Rust build artifacts
+/target/
+
+# Analysis output (generated at runtime)
+/output/*.json
+
+# Ghidra project files (generated during analysis)
+*.gpr
+*.rep/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test binaries (do not commit malware samples)
+*.exe
+!scripts/*.java
