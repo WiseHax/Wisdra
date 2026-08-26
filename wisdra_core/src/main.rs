@@ -5,6 +5,7 @@ mod reporter;
 mod ui;
 mod mitre;
 mod yara;
+mod verifier;
 
 use clap::{Parser, Subcommand};
 use std::env;
@@ -31,6 +32,10 @@ enum Commands {
         /// Run in headless mode without the interactive Ratatui dashboard
         #[arg(long, short = 'n', default_value_t = false)]
         no_ui: bool,
+
+        /// Automatically verify exploitability with ExposureZ3 (Formal Verification)
+        #[arg(long, short = 'v', default_value_t = false)]
+        verify: bool,
     },
 }
 
@@ -42,7 +47,7 @@ fn main() {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::Analyze { target_file, ghidra_path, no_ui } => {
+        Commands::Analyze { target_file, ghidra_path, no_ui, verify } => {
             let resolved_ghidra_path = match ghidra_path {
                 Some(path) => path.clone(),
                 None => {
@@ -62,6 +67,17 @@ fn main() {
                     // Always generate the markdown report
                     if let Err(e) = reporter::export_markdown(&report) {
                         eprintln!("[-] Warning: Failed to export markdown report: {}", e);
+                    }
+
+                    // Phase 12: Automated Formal Verification
+                    if *verify {
+                        if report.vulnerabilities.is_empty() {
+                            println!("\n[*] Verification skipped: No vulnerabilities found to verify.");
+                        } else {
+                            if let Err(e) = verifier::run_exposure_z3(target_file) {
+                                eprintln!("\n[-] Formal Verification Error: {}", e);
+                            }
+                        }
                     }
 
                     if !no_ui {

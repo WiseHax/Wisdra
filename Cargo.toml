@@ -1,3 +1,9 @@
+[workspace]
+members = [
+    "wisdra_core",
+    "ExposureZ3"
+]
+
 [package]
 name = "wisdra"
 version = "0.1.0"
