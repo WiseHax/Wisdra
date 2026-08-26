@@ -29,7 +29,8 @@ import java.util.*;
 
 public class WisdraExtract extends GhidraScript {
 
-    private static final String WISDRA_VERSION = "2.0.0";
+    private static final String WISDRA_VERSION = "2.1.0";
+    private JsonArray globalDeobfuscated = new JsonArray();
 
     private static final String[] SUSPICIOUS_APIS = {
         "VirtualAlloc", "VirtualProtect", "WriteProcessMemory", "CreateRemoteThread",
@@ -136,20 +137,25 @@ public class WisdraExtract extends GhidraScript {
         report.add("strings", strings);
 
         // 7. P-CODE VULNERABILITY HUNT
-        println("[WISDRA] [6/8] Running P-Code Vulnerability Hunter...");
+        println("[WISDRA] [6/9] Running P-Code Vulnerability Hunter...");
         JsonArray vulns = runPCodeVulnHunter();
         report.add("vulnerabilities", vulns);
         println("[WISDRA]        Found " + vulns.size() + " potential vulnerabilities");
 
         // 8. KILL CHAIN RECONSTRUCTION
-        println("[WISDRA] [7/8] Reconstructing Behavioral Kill Chains...");
+        println("[WISDRA] [7/9] Reconstructing Behavioral Kill Chains...");
         JsonArray killChains = detectKillChains();
         report.add("kill_chains", killChains);
         println("[WISDRA]        Found " + killChains.size() + " weaponized kill chains");
 
+        // 9. DEOBFUSCATION / STRING DECRYPTION
+        println("[WISDRA] [8/9] Extracting Deobfuscated Strings & XOR Routines...");
+        report.add("deobfuscation", globalDeobfuscated);
+        println("[WISDRA]        Found " + globalDeobfuscated.size() + " deobfuscation artifacts");
+
         // Threat Assessment
-        println("[WISDRA] [8/8] Computing threat assessment...");
-        JsonObject threats = assessThreats(imports, sectionData.getAsJsonArray("entropy"), strings, vulns, killChains);
+        println("[WISDRA] [9/9] Computing threat assessment...");
+        JsonObject threats = assessThreats(imports, sectionData.getAsJsonArray("entropy"), strings, vulns, killChains, globalDeobfuscated);
         report.add("threat_indicators", threats);
 
         // Write JSON
@@ -273,6 +279,10 @@ public class WisdraExtract extends GhidraScript {
 
             // Detect potential integer overflow before allocation
             scanForIntOverflowPattern(highFunc, func, vulns);
+
+            // Phase 11: Dynamic Deobfuscation (Stack Strings & XOR Loops)
+            scanForStackStrings(highFunc, func);
+            scanForXorLoops(highFunc, func);
         }
 
         decomp.dispose();
@@ -315,6 +325,83 @@ public class WisdraExtract extends GhidraScript {
                             vuln.addProperty("code_context", "// INT_MULT -> " + name + "()");
                             vulns.add(vuln);
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // DYNAMIC DEOBFUSCATION
+    // =========================================================================
+
+    private void scanForStackStrings(HighFunction hf, Function func) {
+        List<Character> potentialStackString = new ArrayList<>();
+        Iterator<PcodeOpAST> ops = hf.getPcodeOps();
+        
+        while (ops.hasNext()) {
+            PcodeOpAST op = ops.next();
+            if (op.getOpcode() == PcodeOp.COPY || op.getOpcode() == PcodeOp.STORE) {
+                Varnode input = null;
+                if (op.getOpcode() == PcodeOp.COPY) {
+                    input = op.getInput(0);
+                } else if (op.getOpcode() == PcodeOp.STORE && op.getNumInputs() >= 3) {
+                    input = op.getInput(2);
+                }
+                
+                if (input != null && input.isConstant()) {
+                    long val = input.getOffset();
+                    if (val >= 0x20 && val <= 0x7E) {
+                        potentialStackString.add((char)val);
+                    } else if (val == 0) {
+                        if (potentialStackString.size() >= 6) {
+                            StringBuilder sb = new StringBuilder();
+                            for (char c : potentialStackString) sb.append(c);
+                            JsonObject ssObj = new JsonObject();
+                            ssObj.addProperty("type", "stack_string");
+                            ssObj.addProperty("reconstructed_string", sb.toString());
+                            ssObj.addProperty("function", func.getName());
+                            globalDeobfuscated.add(ssObj);
+                        }
+                        potentialStackString.clear();
+                    }
+                }
+            }
+        }
+        
+        if (potentialStackString.size() >= 6) {
+            StringBuilder sb = new StringBuilder();
+            for (char c : potentialStackString) sb.append(c);
+            JsonObject ssObj = new JsonObject();
+            ssObj.addProperty("type", "stack_string");
+            ssObj.addProperty("reconstructed_string", sb.toString());
+            ssObj.addProperty("function", func.getName());
+            globalDeobfuscated.add(ssObj);
+        }
+    }
+
+    private void scanForXorLoops(HighFunction hf, Function func) {
+        Iterator<PcodeOpAST> ops = hf.getPcodeOps();
+        while (ops.hasNext()) {
+            PcodeOpAST op = ops.next();
+            if (op.getOpcode() == PcodeOp.INT_XOR) {
+                Varnode in0 = op.getInput(0);
+                Varnode in1 = op.getInput(1);
+                
+                if (in0 == null || in1 == null) continue;
+                if (in0.equals(in1)) continue; // ignore clearing registers (XOR EAX, EAX)
+                
+                boolean hasConstantKey = in0.isConstant() || in1.isConstant();
+                if (hasConstantKey) {
+                    long key = in0.isConstant() ? in0.getOffset() : in1.getOffset();
+                    if (key > 0) {
+                        JsonObject xorObj = new JsonObject();
+                        xorObj.addProperty("type", "xor_decryption_routine");
+                        xorObj.addProperty("key_value", "0x" + Long.toHexString(key));
+                        xorObj.addProperty("function", func.getName());
+                        xorObj.addProperty("address", op.getSeqnum().getTarget().toString());
+                        globalDeobfuscated.add(xorObj);
+                        break; 
                     }
                 }
             }
@@ -647,7 +734,7 @@ public class WisdraExtract extends GhidraScript {
         return killChains;
     }
 
-    private JsonObject assessThreats(JsonArray imports, JsonArray entropy, JsonArray strings, JsonArray vulns, JsonArray killChains) {
+    private JsonObject assessThreats(JsonArray imports, JsonArray entropy, JsonArray strings, JsonArray vulns, JsonArray killChains, JsonArray deobfuscated) {
         List<String> suspiciousList = new ArrayList<>();
         List<String> antiDebugList = new ArrayList<>();
         List<String> networkList = new ArrayList<>();
@@ -685,6 +772,7 @@ public class WisdraExtract extends GhidraScript {
         score += criticalVulns * 8;
         score += highVulns * 4;
         score += killChains.size() * 15;
+        score += deobfuscated.size() * 10;
         score = Math.min(score, 100);
 
         String label = "CLEAN";
@@ -703,6 +791,7 @@ public class WisdraExtract extends GhidraScript {
         threats.addProperty("packing_detected", packing);
         threats.addProperty("vulnerability_count", vulns.size());
         threats.addProperty("kill_chain_count", killChains.size());
+        threats.addProperty("deobfuscation_artifacts", deobfuscated.size());
         threats.addProperty("critical_vulns", criticalVulns);
         threats.addProperty("risk_score", score);
         threats.addProperty("risk_label", label);

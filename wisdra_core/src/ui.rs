@@ -103,7 +103,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, report: &WisdraReport) -> io:
             }
 
             let assessment_text = format!(
-                "\nTarget File: {}\nSHA-256: {}\n\nOverall Risk: {} (Score: {})\n\nVulnerabilities:\n- Total: {}\n- Critical: {}\n- Kill Chains: {}\n\nPacking Detected: {}{}",
+                "\nTarget File: {}\nSHA-256: {}\n\nOverall Risk: {} (Score: {})\n\nVulnerabilities:\n- Total: {}\n- Critical: {}\n- Kill Chains: {}\n- Deobfuscated: {}\n\nPacking Detected: {}{}",
                 report.metadata.file_name,
                 report.metadata.sha256,
                 report.threat_indicators.risk_label,
@@ -111,6 +111,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, report: &WisdraReport) -> io:
                 report.threat_indicators.vulnerability_count,
                 report.threat_indicators.critical_vulns,
                 report.threat_indicators.kill_chain_count,
+                report.threat_indicators.deobfuscation_artifacts,
                 if report.threat_indicators.packing_detected { "YES (High Entropy)" } else { "NO" },
                 mitre_summary
             );

@@ -4,6 +4,18 @@ use std::path::Path;
 use std::process::Command;
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct DeobfuscationData {
+    pub r#type: String,
+    pub function: String,
+    #[serde(default)]
+    pub reconstructed_string: Option<String>,
+    #[serde(default)]
+    pub key_value: Option<String>,
+    #[serde(default)]
+    pub address: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct KillChainData {
     pub chain_name: String,
     pub function: String,
@@ -20,6 +32,8 @@ pub struct WisdraReport {
     pub vulnerabilities: Vec<VulnerabilityData>,
     #[serde(default)]
     pub kill_chains: Vec<KillChainData>,
+    #[serde(default)]
+    pub deobfuscation: Vec<DeobfuscationData>,
     #[serde(default)]
     pub strings: Vec<String>,
 }
@@ -52,6 +66,8 @@ pub struct ThreatIndicators {
     pub vulnerability_count: u32,
     #[serde(default)]
     pub kill_chain_count: u32,
+    #[serde(default)]
+    pub deobfuscation_artifacts: u32,
     pub critical_vulns: u32,
     pub packing_detected: bool,
     #[serde(default)]
