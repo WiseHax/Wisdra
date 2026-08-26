@@ -15,13 +15,13 @@
 
 ---
 
-## ⚡ Overview
+## Overview
 
 **Wisdra V2** transcends standard metadata extraction. It is a fully weaponized intelligence pipeline designed for zero-click binary analysis. By wrapping Ghidra's Headless Analyzer in a blazingly fast, memory-safe Rust orchestrator, Wisdra allows analysts to rip through suspicious executables, track malicious data flows, and instantly generate defensive countermeasures.
 
 Featuring a Matrix-style terminal UI (TUI) powered by `ratatui` and an automated Markdown reporting engine, Wisdra translates raw opcodes into actionable threat intelligence.
 
-## 🔥 Key Capabilities
+## Key Capabilities
 
 - **P-Code Taint Analysis (Vuln Hunter):** Recursive backward data-flow traversal identifying `CWE-190` (Integer Overflows into allocators) and `CWE-120/134` (Unbounded Memory Writes / Format Strings) by tracking untrusted variables to dangerous sinks (`memcpy`, `malloc`, etc.).
 - **Auto-YARA Generation:** Dynamically builds deployable YARA rules from binary entropy, malicious API imports, and sanitized string extractions.
@@ -30,7 +30,7 @@ Featuring a Matrix-style terminal UI (TUI) powered by `ratatui` and an automated
 - **SIGINT-Style Reporting:** Compiles a forensic, intelligence-grade Markdown report detailing the exact execution contexts and decompiled code blocks of discovered vulnerabilities.
 - **High-Performance Rust Core:** Compiled with aggressive Link-Time Optimizations (LTO) and stripped symbols for maximum speed and minimal host footprint.
 
-## 🏗️ Architecture
+## Architecture
 
 Wisdra V2 operates on a strict separation of concerns to bypass memory bottlenecks typically associated with JVM-based analysis:
 
@@ -46,7 +46,7 @@ graph TD
     A -->|Generates| H[YARA Rules & MITRE Maps]
 ```
 
-## 🛠️ Installation
+## Installation
 
 ### Prerequisites
 - [Rust](https://rustup.rs/) (1.70+)
@@ -60,7 +60,7 @@ cargo build --release
 ```
 The compiled, optimized binary will be located at `target/release/wisdra_core.exe`.
 
-## 🚀 Usage
+## Usage
 
 Ensure the `GHIDRA_HOME` environment variable is mapped to your Ghidra installation, or provide the path via the `--ghidra-path` flag.
 
@@ -78,7 +78,7 @@ For bulk scanning or pipeline integrations, bypass the TUI and directly export t
 ```
 *(The intelligence report and generated YARA rule will be saved to the `output/` directory).*
 
-## 🗺️ Roadmap (V3 Future Targets)
+## Roadmap (V3 Future Targets)
 
 While Wisdra V2 implements complete P-Code vulnerability hunting and YARA generation, the following upgrades are planned for the next evolutionary leap:
 
@@ -87,7 +87,7 @@ While Wisdra V2 implements complete P-Code vulnerability hunting and YARA genera
 - [ ] **Multi-Binary Ingestion:** Support bulk directory scanning for automated triage of massive malware dumps.
 - [ ] **LLM Heuristic Explanations:** Optional plugin to pipe decompiled C-code contexts to a local LLM for natural language vulnerability explanations.
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 Wisdra is a defensive security research tool intended solely for authorized binary analysis, malware research, and proactive cyber defense. The authors assume no liability for misuse. Ensure proper authorization before processing any binary.
 
