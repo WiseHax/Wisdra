@@ -63,11 +63,13 @@ pub struct Metadata {
 pub struct ThreatIndicators {
     pub risk_label: String,
     pub risk_score: u32,
+    #[serde(default)]
     pub vulnerability_count: u32,
     #[serde(default)]
     pub kill_chain_count: u32,
     #[serde(default)]
     pub deobfuscation_artifacts: u32,
+    #[serde(default)]
     pub critical_vulns: u32,
     pub packing_detected: bool,
     #[serde(default)]

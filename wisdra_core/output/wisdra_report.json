@@ -1,0 +1,389 @@
+{
+  "metadata": {
+    "file_name": "calc.exe",
+    "file_format": "Portable Executable (PE)",
+    "architecture": "x86:LE:64:default",
+    "compiler": "windows",
+    "entry_point": "140001740",
+    "image_base": "140000000",
+    "sha256": "DUMMY_SHA256",
+    "analysis_date": "2026-08-26T09:20:24Z",
+    "wisdra_version": "2.0.0"
+  },
+  "imports": [
+    {
+      "library": "SHELL32.DLL",
+      "function": "ShellExecuteW",
+      "address": "EXTERNAL:00000001",
+      "category": "execution"
+    },
+    {
+      "library": "KERNEL32.DLL",
+      "function": "GetCurrentThreadId",
+      "address": "EXTERNAL:00000002",
+      "category": ""
+    },
+    {
+      "library": "KERNEL32.DLL",
+      "function": "GetSystemTimeAsFileTime",
+      "address": "EXTERNAL:00000003",
+      "category": ""
+    },
+    {
+      "library": "KERNEL32.DLL",
+      "function": "GetTickCount",
+      "address": "EXTERNAL:00000004",
+      "category": ""
+    },
+    {
+      "library": "KERNEL32.DLL",
+      "function": "RtlCaptureContext",
+      "address": "EXTERNAL:00000005",
+      "category": ""
+    },
+    {
+      "library": "KERNEL32.DLL",
+      "function": "GetCurrentProcessId",
+      "address": "EXTERNAL:00000006",
+      "category": ""
+    },
+    {
+      "library": "KERNEL32.DLL",
+      "function": "RtlVirtualUnwind",
+      "address": "EXTERNAL:00000007",
+      "category": ""
+    },
+    {
+      "library": "KERNEL32.DLL",
+      "function": "UnhandledExceptionFilter",
+      "address": "EXTERNAL:00000008",
+      "category": ""
+    },
+    {
+      "library": "KERNEL32.DLL",
+      "function": "SetUnhandledExceptionFilter",
+      "address": "EXTERNAL:00000009",
+      "category": ""
+    },
+    {
+      "library": "KERNEL32.DLL",
+      "function": "GetCurrentProcess",
+      "address": "EXTERNAL:0000000a",
+      "category": ""
+    },
+    {
+      "library": "KERNEL32.DLL",
+      "function": "TerminateProcess",
+      "address": "EXTERNAL:0000000b",
+      "category": ""
+    },
+    {
+      "library": "KERNEL32.DLL",
+      "function": "QueryPerformanceCounter",
+      "address": "EXTERNAL:0000000c",
+      "category": ""
+    },
+    {
+      "library": "KERNEL32.DLL",
+      "function": "RtlLookupFunctionEntry",
+      "address": "EXTERNAL:0000000d",
+      "category": ""
+    },
+    {
+      "library": "MSVCRT.DLL",
+      "function": "__setusermatherr",
+      "address": "EXTERNAL:0000000e",
+      "category": ""
+    },
+    {
+      "library": "MSVCRT.DLL",
+      "function": "_initterm",
+      "address": "EXTERNAL:0000000f",
+      "category": ""
+    },
+    {
+      "library": "MSVCRT.DLL",
+      "function": "memset",
+      "address": "EXTERNAL:00000011",
+      "category": ""
+    },
+    {
+      "library": "MSVCRT.DLL",
+      "function": "__wgetmainargs",
+      "address": "EXTERNAL:00000015",
+      "category": ""
+    },
+    {
+      "library": "MSVCRT.DLL",
+      "function": "_exit",
+      "address": "EXTERNAL:00000016",
+      "category": ""
+    },
+    {
+      "library": "MSVCRT.DLL",
+      "function": "_amsg_exit",
+      "address": "EXTERNAL:00000017",
+      "category": ""
+    },
+    {
+      "library": "MSVCRT.DLL",
+      "function": "_XcptFilter",
+      "address": "EXTERNAL:00000018",
+      "category": ""
+    },
+    {
+      "library": "MSVCRT.DLL",
+      "function": "exit",
+      "address": "EXTERNAL:00000019",
+      "category": ""
+    },
+    {
+      "library": "MSVCRT.DLL",
+      "function": "terminate",
+      "address": "EXTERNAL:0000001a",
+      "category": ""
+    },
+    {
+      "library": "MSVCRT.DLL",
+      "function": "__set_app_type",
+      "address": "EXTERNAL:0000001b",
+      "category": ""
+    },
+    {
+      "library": "MSVCRT.DLL",
+      "function": "_cexit",
+      "address": "EXTERNAL:0000001c",
+      "category": ""
+    },
+    {
+      "library": "ADVAPI32.DLL",
+      "function": "EventSetInformation",
+      "address": "EXTERNAL:0000001d",
+      "category": ""
+    },
+    {
+      "library": "ADVAPI32.DLL",
+      "function": "EventWriteTransfer",
+      "address": "EXTERNAL:0000001e",
+      "category": ""
+    },
+    {
+      "library": "ADVAPI32.DLL",
+      "function": "EventRegister",
+      "address": "EXTERNAL:0000001f",
+      "category": ""
+    },
+    {
+      "library": "API-MS-WIN-CORE-SYNCH-L1-2-0.DLL",
+      "function": "Sleep",
+      "address": "EXTERNAL:00000020",
+      "category": ""
+    },
+    {
+      "library": "API-MS-WIN-CORE-PROCESSTHREADS-L1-1-0.DLL",
+      "function": "GetStartupInfoW",
+      "address": "EXTERNAL:00000021",
+      "category": ""
+    },
+    {
+      "library": "API-MS-WIN-CORE-LIBRARYLOADER-L1-2-0.DLL",
+      "function": "GetModuleHandleW",
+      "address": "EXTERNAL:00000022",
+      "category": ""
+    }
+  ],
+  "sections": [
+    {
+      "name": "Headers",
+      "virtual_address": "140000000",
+      "virtual_size": 4096,
+      "raw_size": 4096,
+      "permissions": "R"
+    },
+    {
+      "name": ".text",
+      "virtual_address": "140001000",
+      "virtual_size": 4096,
+      "raw_size": 4096,
+      "permissions": "RX"
+    },
+    {
+      "name": "fothk",
+      "virtual_address": "140002000",
+      "virtual_size": 4096,
+      "raw_size": 4096,
+      "permissions": "RX"
+    },
+    {
+      "name": ".rdata",
+      "virtual_address": "140003000",
+      "virtual_size": 4096,
+      "raw_size": 4096,
+      "permissions": "R"
+    },
+    {
+      "name": ".data",
+      "virtual_address": "140004000",
+      "virtual_size": 4096,
+      "raw_size": 4096,
+      "permissions": "RW"
+    },
+    {
+      "name": ".pdata",
+      "virtual_address": "140005000",
+      "virtual_size": 4096,
+      "raw_size": 4096,
+      "permissions": "R"
+    },
+    {
+      "name": ".rsrc",
+      "virtual_address": "140006000",
+      "virtual_size": 20480,
+      "raw_size": 20480,
+      "permissions": "R"
+    },
+    {
+      "name": ".reloc",
+      "virtual_address": "14000b000",
+      "virtual_size": 4096,
+      "raw_size": 4096,
+      "permissions": "R"
+    },
+    {
+      "name": "tdb",
+      "virtual_address": "ff00000000",
+      "virtual_size": 6224,
+      "raw_size": 6224,
+      "permissions": "RW"
+    }
+  ],
+  "entropy_analysis": [
+    {
+      "section": "Headers",
+      "entropy": 0.8461,
+      "suspicious": false,
+      "verdict": "LOW — sparse data"
+    },
+    {
+      "section": ".text",
+      "entropy": 4.9982,
+      "suspicious": false,
+      "verdict": "NORMAL — standard code/data"
+    },
+    {
+      "section": "fothk",
+      "entropy": 0.0159,
+      "suspicious": false,
+      "verdict": "LOW — sparse data"
+    },
+    {
+      "section": ".rdata",
+      "entropy": 3.8611,
+      "suspicious": false,
+      "verdict": "LOW — sparse data"
+    },
+    {
+      "section": ".data",
+      "entropy": 0.0614,
+      "suspicious": false,
+      "verdict": "LOW — sparse data"
+    },
+    {
+      "section": ".pdata",
+      "entropy": 0.3642,
+      "suspicious": false,
+      "verdict": "LOW — sparse data"
+    },
+    {
+      "section": ".rsrc",
+      "entropy": 2.8055,
+      "suspicious": false,
+      "verdict": "LOW — sparse data"
+    },
+    {
+      "section": ".reloc",
+      "entropy": 0.1922,
+      "suspicious": false,
+      "verdict": "LOW — sparse data"
+    },
+    {
+      "section": "tdb",
+      "entropy": 0.0023,
+      "suspicious": false,
+      "verdict": "LOW — sparse data"
+    }
+  ],
+  "decompilation": {
+    "name": "entry",
+    "address": "140001740",
+    "code": "\r\nvoid entry(void)\r\n\r\n{\r\n  FUN_140001138();\r\n  FUN_1400014c0();\r\n  return;\r\n}\r\n\r\n",
+    "line_count": 9
+  },
+  "strings": [
+    "CalculatorStarted",
+    "CalculatorWinMain",
+    "\"CalculatorStarted\"",
+    "MicrosoftCalculator",
+    ".gehcont",
+    ".rdata",
+    ".rdata$voltmd",
+    ".rdata$zETW1",
+    ".rdata$zETW2",
+    ".pdata",
+    "ShellExecuteW",
+    "SHELL32.dll",
+    "QueryPerformanceCounter",
+    "GetCurrentProcessId",
+    "GetCurrentThreadId",
+    "GetSystemTimeAsFileTime",
+    "GetTickCount",
+    "RtlCaptureContext",
+    "RtlLookupFunctionEntry",
+    "RtlVirtualUnwind",
+    "UnhandledExceptionFilter",
+    "SetUnhandledExceptionFilter",
+    "GetCurrentProcess",
+    "TerminateProcess",
+    "KERNEL32.dll",
+    "_XcptFilter",
+    "_amsg_exit",
+    "__wgetmainargs",
+    "__set_app_type",
+    "_cexit",
+    "__setusermatherr",
+    "_initterm",
+    "__C_specific_handler",
+    "memset",
+    "_wcmdln",
+    "_fmode",
+    "_commode",
+    "msvcrt.dll",
+    "?terminate@@YAXXZ",
+    "EventRegister",
+    "EventSetInformation",
+    "EventWriteTransfer",
+    "ADVAPI32.dll",
+    "GetStartupInfoW",
+    "GetModuleHandleW",
+    "api-ms-win-core-synch-l1-2-0.dll",
+    "api-ms-win-core-processthreads-l1-1-0.dll",
+    "api-ms-win-core-libraryloader-l1-2-0.dll",
+    "\u003c?xml version\u003d\"1.0\" encoding\u003d\"UTF-8\" standalone\u003d\"yes\"?\u003e\r\n\u003c!-- Copyright (c) Microsoft Corporation --\u003e\r\n\u003cassembly xmlns\u003d\"urn:schemas-microsoft-com:asm.v1\" manifestVersion\u003d\"1.0\"\u003e\r\n\u003cassemblyIdentity\r\n    name\u003d\"Microsoft.Windows.Shell.calc\"\r\n    processorArchitecture\u003d\"amd64\"\r\n    version\u003d\"5.1.0.0\"\r\n    type\u003d\"win32\"/\u003e\r\n\u003cdescription\u003eWindows Shell\u003c/description\u003e\r\n\u003cdependency\u003e\r\n    \u003cdependentAssembly\u003e\r\n        \u003cassemblyIdentity\r\n            type\u003d\"win32\"\r\n            name\u003d\"Microsoft.Windows.Common-Controls\"\r\n            version\u003d\"6.0.0.0\"\r\n            processorArchitecture\u003d\"*\"\r\n            publicKeyToken\u003d\"6595b64144ccf1df\"\r\n            language\u003d\"*\"\r\n        /\u003e\r\n    \u003c/dependentAssembly\u003e\r\n\u003c/dependency\u003e\r\n\u003ctrustInfo xmlns\u003d\"urn:schemas-microsoft-com:asm.v3\"\u003e\r\n    \u003csecurity\u003e\r\n        \u003crequestedPrivileges\u003e\r\n            \u003crequestedExecutionLevel level\u003d\"asInvoker\" uiAccess\u003d\"false\"/\u003e\r\n        \u003c/requestedPrivileges\u003e\r\n    \u003c/security\u003e\r\n\u003c/trustInfo\u003e\r\n\u003capplication xmlns\u003d\"urn:schemas-microsoft-com:asm.v3\"\u003e\r\n    \u003cwindowsSettings\u003e\r\n        \u003cdpiAware  xmlns\u003d\"http://schemas.microsoft.com/SMI/2005/WindowsSettings\"\u003etrue\u003c/dpiAware\u003e\r\n    \u003c/windowsSettings\u003e\r\n\u003c/application\u003e\r\n\u003c/assembly\u003e\r\n"
+  ],
+  "vulnerabilities": [],
+  "threat_indicators": {
+    "suspicious_imports": [
+      "ShellExecuteW"
+    ],
+    "anti_debug": [
+      "GetTickCount",
+      "QueryPerformanceCounter"
+    ],
+    "network_indicators": [],
+    "packing_detected": false,
+    "vulnerability_count": 0,
+    "critical_vulns": 0,
+    "risk_score": 25,
+    "risk_label": "MODERATE"
+  }
+}
