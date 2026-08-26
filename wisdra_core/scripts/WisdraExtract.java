@@ -110,40 +110,46 @@ public class WisdraExtract extends GhidraScript {
         JsonObject report = new JsonObject();
 
         // 1. Metadata
-        println("[WISDRA] [1/7] Extracting metadata...");
+        println("[WISDRA] [1/8] Extracting metadata...");
         report.add("metadata", extractMetadata(sha256));
 
         // 2. Imports
-        println("[WISDRA] [2/7] Extracting API imports...");
+        println("[WISDRA] [2/8] Extracting API imports...");
         JsonArray imports = extractImports();
         report.add("imports", imports);
         println("[WISDRA]        Found " + imports.size() + " imports");
 
         // 3-4. Sections & Entropy
-        println("[WISDRA] [3/7] Analyzing PE sections & entropy...");
+        println("[WISDRA] [3/8] Analyzing PE sections & entropy...");
         JsonObject sectionData = extractSectionsAndEntropy();
         report.add("sections", sectionData.getAsJsonArray("sections"));
         report.add("entropy_analysis", sectionData.getAsJsonArray("entropy"));
 
         // 5. Decompilation
-        println("[WISDRA] [4/7] Decompiling entry point...");
+        println("[WISDRA] [4/8] Decompiling entry point...");
         JsonObject decomp = decompileEntry();
         report.add("decompilation", decomp);
 
         // 6. Strings
-        println("[WISDRA] [5/7] Extracting strings...");
+        println("[WISDRA] [5/8] Extracting strings...");
         JsonArray strings = extractStrings();
         report.add("strings", strings);
 
         // 7. P-CODE VULNERABILITY HUNT
-        println("[WISDRA] [6/7] Running P-Code Vulnerability Hunter...");
+        println("[WISDRA] [6/8] Running P-Code Vulnerability Hunter...");
         JsonArray vulns = runPCodeVulnHunter();
         report.add("vulnerabilities", vulns);
         println("[WISDRA]        Found " + vulns.size() + " potential vulnerabilities");
 
-        // Threat Assessment (now includes vuln count)
-        println("[WISDRA] [7/7] Computing threat assessment...");
-        JsonObject threats = assessThreats(imports, sectionData.getAsJsonArray("entropy"), strings, vulns);
+        // 8. KILL CHAIN RECONSTRUCTION
+        println("[WISDRA] [7/8] Reconstructing Behavioral Kill Chains...");
+        JsonArray killChains = detectKillChains();
+        report.add("kill_chains", killChains);
+        println("[WISDRA]        Found " + killChains.size() + " weaponized kill chains");
+
+        // Threat Assessment
+        println("[WISDRA] [8/8] Computing threat assessment...");
+        JsonObject threats = assessThreats(imports, sectionData.getAsJsonArray("entropy"), strings, vulns, killChains);
         report.add("threat_indicators", threats);
 
         // Write JSON
@@ -568,7 +574,80 @@ public class WisdraExtract extends GhidraScript {
         return strings;
     }
 
-    private JsonObject assessThreats(JsonArray imports, JsonArray entropy, JsonArray strings, JsonArray vulns) {
+    // =========================================================================
+    // BEHAVIORAL KILL CHAIN RECONSTRUCTION
+    // =========================================================================
+
+    private JsonArray detectKillChains() {
+        JsonArray killChains = new JsonArray();
+        
+        Object[][] knownChains = {
+            {"Process Injection", new String[]{"VirtualAlloc", "WriteProcessMemory", "CreateRemoteThread"}},
+            {"Process Hollowing", new String[]{"CreateProcess", "NtUnmapViewOfSection", "VirtualAlloc", "WriteProcessMemory", "SetThreadContext", "ResumeThread"}},
+            {"DLL Injection", new String[]{"OpenProcess", "VirtualAlloc", "WriteProcessMemory", "LoadLibrary"}},
+            {"Download & Execute", new String[]{"URLDownloadToFile", "WinExec"}},
+            {"Download & Execute (CreateProcess)", new String[]{"URLDownloadToFile", "CreateProcess"}},
+            {"Ransomware Encryption", new String[]{"CryptAcquireContext", "CryptEncrypt"}},
+            {"Keylogging", new String[]{"SetWindowsHookEx", "GetAsyncKeyState"}}
+        };
+
+        FunctionManager funcMgr = currentProgram.getFunctionManager();
+        for (Function func : funcMgr.getFunctions(true)) {
+            if (monitor.isCancelled()) break;
+            
+            List<String> callsInFunc = new ArrayList<>();
+            InstructionIterator instIter = currentProgram.getListing().getInstructions(func.getBody(), true);
+            while(instIter.hasNext()) {
+                Instruction inst = instIter.next();
+                if (inst.getFlowType().isCall()) {
+                    for (ghidra.program.model.symbol.Reference ref : inst.getReferencesFrom()) {
+                        if (ref.getReferenceType().isCall()) {
+                            Function targetFunc = funcMgr.getFunctionAt(ref.getToAddress());
+                            if (targetFunc != null) {
+                                callsInFunc.add(targetFunc.getName());
+                            } else {
+                                Symbol sym = currentProgram.getSymbolTable().getPrimarySymbol(ref.getToAddress());
+                                if (sym != null) {
+                                    callsInFunc.add(sym.getName());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            for (Object[] chainObj : knownChains) {
+                String chainName = (String) chainObj[0];
+                String[] sequence = (String[]) chainObj[1];
+                
+                int seqIndex = 0;
+                List<String> matchedCalls = new ArrayList<>();
+                
+                for (String call : callsInFunc) {
+                    if (call.toLowerCase().contains(sequence[seqIndex].toLowerCase())) {
+                        matchedCalls.add(call);
+                        seqIndex++;
+                        if (seqIndex == sequence.length) {
+                            JsonObject kc = new JsonObject();
+                            kc.addProperty("chain_name", chainName);
+                            kc.addProperty("function", func.getName());
+                            kc.addProperty("address", func.getEntryPoint().toString());
+                            
+                            JsonArray seqArr = new JsonArray();
+                            for (String mc : matchedCalls) seqArr.add(mc);
+                            kc.add("sequence", seqArr);
+                            
+                            killChains.add(kc);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return killChains;
+    }
+
+    private JsonObject assessThreats(JsonArray imports, JsonArray entropy, JsonArray strings, JsonArray vulns, JsonArray killChains) {
         List<String> suspiciousList = new ArrayList<>();
         List<String> antiDebugList = new ArrayList<>();
         List<String> networkList = new ArrayList<>();
@@ -605,6 +684,7 @@ public class WisdraExtract extends GhidraScript {
         score += Math.min(networkList.size() * 5, 20);
         score += criticalVulns * 8;
         score += highVulns * 4;
+        score += killChains.size() * 15;
         score = Math.min(score, 100);
 
         String label = "CLEAN";
@@ -622,6 +702,7 @@ public class WisdraExtract extends GhidraScript {
         threats.add("network_indicators", netArr);
         threats.addProperty("packing_detected", packing);
         threats.addProperty("vulnerability_count", vulns.size());
+        threats.addProperty("kill_chain_count", killChains.size());
         threats.addProperty("critical_vulns", criticalVulns);
         threats.addProperty("risk_score", score);
         threats.addProperty("risk_label", label);

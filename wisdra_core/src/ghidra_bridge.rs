@@ -3,6 +3,14 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct KillChainData {
+    pub chain_name: String,
+    pub function: String,
+    pub address: String,
+    pub sequence: Vec<String>,
+}
+
 /// Represents the final JSON report exported by WisdraExtract.java
 #[derive(Debug, Deserialize)]
 pub struct WisdraReport {
@@ -10,6 +18,8 @@ pub struct WisdraReport {
     pub threat_indicators: ThreatIndicators,
     #[serde(default)]
     pub vulnerabilities: Vec<VulnerabilityData>,
+    #[serde(default)]
+    pub kill_chains: Vec<KillChainData>,
     #[serde(default)]
     pub strings: Vec<String>,
 }
@@ -40,6 +50,8 @@ pub struct ThreatIndicators {
     pub risk_label: String,
     pub risk_score: u32,
     pub vulnerability_count: u32,
+    #[serde(default)]
+    pub kill_chain_count: u32,
     pub critical_vulns: u32,
     pub packing_detected: bool,
     #[serde(default)]
