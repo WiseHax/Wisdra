@@ -45,6 +45,7 @@ async fn main() {
             ghidra_path,
             timeout,
             deep,
+            verify,
         } => {
             engine::run_analysis(
                 &target,
@@ -52,6 +53,7 @@ async fn main() {
                 ghidra_path.as_deref(),
                 timeout,
                 deep,
+                verify,
                 cli.quiet,
             )
             .await

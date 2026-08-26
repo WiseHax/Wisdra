@@ -76,7 +76,7 @@ fn create_progress_bar(total: u64) -> ProgressBar {
 
 pub async fn run_analysis(
     target: &str, output: Option<&str>, ghidra_path: Option<&str>,
-    timeout_secs: u64, deep: bool, quiet: bool,
+    timeout_secs: u64, deep: bool, verify: bool, quiet: bool,
 ) -> Result<()> {
     let target_path = PathBuf::from(target);
     if !target_path.exists() { return Err(EngineError::TargetNotFound(target.into())); }
@@ -148,6 +148,29 @@ pub async fn run_analysis(
     if !quiet { println!("\n  {} Report: {}\n", "✔".bright_green().bold(), output_abs.display().to_string().bright_white().underline()); }
 
     let report = parser::parse_report(&output_abs)?;
+    
+    if verify {
+        println!("\n  {} Launching Formal Verification Engine (ExposureZ3)...\n", "⚙".bright_magenta().bold());
+        let verifier_exe = Path::new("target").join("release").join("exposure_z3.exe");
+        if verifier_exe.exists() {
+            let status = std::process::Command::new(&verifier_exe)
+                .arg("analyze")
+                .arg(&target_abs)
+                .status();
+            
+            if let Ok(st) = status {
+                if !st.success() {
+                    eprintln!("  {} ExposureZ3 exited with status: {}", "⚠".bright_yellow(), st);
+                }
+            } else {
+                eprintln!("  {} Failed to spawn ExposureZ3", "⚠".bright_yellow());
+            }
+        } else {
+            eprintln!("  {} ExposureZ3 binary not found at: {}", "⚠".bright_red(), verifier_exe.display());
+            eprintln!("  Please run `cargo build --release` in the workspace root.");
+        }
+    }
+
     dashboard::render(&report)?;
     std::fs::remove_dir_all(&project_dir).ok();
     Ok(())

@@ -54,6 +54,10 @@ pub enum Commands {
         /// Enable deep analysis (function cross-references, string extraction)
         #[arg(long)]
         deep: bool,
+
+        /// Automatically verify exploitability with ExposureZ3 (Formal Verification)
+        #[arg(long, short = 'v', default_value_t = false)]
+        verify: bool,
     },
 
     /// Render a dashboard from a previously generated JSON report
