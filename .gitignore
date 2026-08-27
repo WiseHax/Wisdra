@@ -1,8 +1,17 @@
 # Rust build artifacts
 /target/
+**/target/
 
 # Analysis output (generated at runtime)
-/output/*.json
+/output/
+/wisdra_core/output/
+wisdra_temp_proj/
+
+# DLLs and Compiled Binaries
+*.exe
+*.dll
+*.so
+*.dylib
 
 # Ghidra project files (generated during analysis)
 *.gpr
@@ -20,5 +29,4 @@ desktop.ini
 *.swo
 
 # Test binaries (do not commit malware samples)
-*.exe
 !scripts/*.java

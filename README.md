@@ -7,91 +7,78 @@
 
 <h1 align="center">WISDRA V2</h1>
 <p align="center">
-  <strong>Static Exploitability & Threat Intelligence Engine</strong>
+  <strong>Advanced Binary Analysis & Live Memory Forensics Platform</strong>
 </p>
 <p align="center">
-  A high-performance Rust engine orchestrating Ghidra's P-Code architecture to conduct deep <br/> static taint analysis, automated vulnerability discovery, and cyber defense signature generation.
+  A high-performance Rust engine orchestrating Ghidra's P-Code architecture, Formal Verification (Z3), and Live Process Memory Scanning for comprehensive threat intelligence.
 </p>
 
 ---
 
 ## Overview
 
-**Wisdra V2** transcends standard metadata extraction. It is a fully weaponized intelligence pipeline designed for zero-click binary analysis. By wrapping Ghidra's Headless Analyzer in a blazingly fast, memory-safe Rust orchestrator, Wisdra allows analysts to rip through suspicious executables, track malicious data flows, and instantly generate defensive countermeasures.
-
-Featuring a Matrix-style terminal UI (TUI) powered by `ratatui` and an automated Markdown reporting engine, Wisdra translates raw opcodes into actionable threat intelligence.
+**Wisdra V2** transcends standard metadata extraction by offering an all-in-one defensive analysis platform. It wraps Ghidra's Headless Analyzer, integrates a Formal Verification engine (ExposureZ3), and features a built-in Live Memory Forensics module. Wisdra empowers security analysts to perform static binary reversing, mathematical exploit verification, and dynamic in-memory threat hunting—all from a blazingly fast, memory-safe Rust orchestrator.
 
 ## Key Capabilities
 
-- **P-Code Taint Analysis (Vuln Hunter):** Recursive backward data-flow traversal identifying `CWE-190` (Integer Overflows into allocators) and `CWE-120/134` (Unbounded Memory Writes / Format Strings) by tracking untrusted variables to dangerous sinks (`memcpy`, `malloc`, etc.).
+- **P-Code Taint Analysis:** Recursive backward data-flow traversal identifying `CWE-190` and `CWE-120/134` by tracking untrusted variables to dangerous sinks using Ghidra's P-Code AST.
+- **Formal Verification (ExposureZ3):** Bridges Wisdra's vulnerability findings into the Z3 SMT Theorem Prover to mathematically verify if a discovered vulnerability is reachable/exploitable.
+- **Live Memory Extraction (Valkyrie Engine):** Hooks directly into the Windows API to scan running processes (PIDs) for memory anomalies like `PAGE_EXECUTE_READWRITE` (RWX) blocks, effectively hunting Process Hollowing and memory-injected payloads.
 - **Auto-YARA Generation:** Dynamically builds deployable YARA rules from binary entropy, malicious API imports, and sanitized string extractions.
-- **MITRE ATT&CK Matrix Mapping:** Automatically correlates discovered heuristics and API fingerprints to specific MITRE tactics and techniques (e.g., *T1055 Process Injection*, *T1622 Debugger Evasion*).
-- **Interactive TUI Dashboard:** A professional terminal interface displaying real-time threat telemetry, vulnerability intelligence, and categorized suspicious operations.
-- **SIGINT-Style Reporting:** Compiles a forensic, intelligence-grade Markdown report detailing the exact execution contexts and decompiled code blocks of discovered vulnerabilities.
-- **High-Performance Rust Core:** Compiled with aggressive Link-Time Optimizations (LTO) and stripped symbols for maximum speed and minimal host footprint.
-
-## Architecture
-
-Wisdra V2 operates on a strict separation of concerns to bypass memory bottlenecks typically associated with JVM-based analysis:
-
-```mermaid
-graph TD
-    A[Wisdra CLI - Rust] -->|Spawns| B(Ghidra Headless Analyzer)
-    B -->|Executes| C(WisdraExtract.java - P-Code Engine)
-    C -->|Extracts| D[AST, CFG, Varnodes, Heuristics]
-    D -->|Serializes| E[(wisdra_report.json)]
-    E -->|Deserialized by| A
-    A -->|Renders| F[Ratatui Dashboard]
-    A -->|Persists| G[Markdown Intel Report]
-    A -->|Generates| H[YARA Rules & MITRE Maps]
-```
+- **SIGINT-Style Reporting:** Compiles forensic, intelligence-grade Markdown reports detailing the exact execution contexts of discovered threats.
 
 ## Installation
 
 ### Prerequisites
-- [Rust](https://rustup.rs/) (1.70+)
-- [Ghidra](https://github.com/NationalSecurityAgency/ghidra/releases) (11.x or 12.x)
+1. [Rust](https://rustup.rs/) (1.70+)
+2. [Ghidra](https://github.com/NationalSecurityAgency/ghidra/releases) (11.x or 12.x) - Ensure Java 21+ is installed.
+3. Microsoft C++ Build Tools (Required for Z3 Bindings & Windows API)
 
-### Build the Optimized Engine
+### Step 1: Clone the Repository
 ```bash
 git clone https://github.com/WiseHax/Wisdra.git
 cd Wisdra
+```
+
+### Step 2: Build the Optimized Engine
+Compile the entire workspace (including the core engine and the ExposureZ3 verifier):
+```bash
 cargo build --release
 ```
-The compiled, optimized binary will be located at `target/release/wisdra_core.exe`.
+*The compiled binaries will be located in the `target/release/` directory.*
 
-## Usage
-
-Ensure the `GHIDRA_HOME` environment variable is mapped to your Ghidra installation, or provide the path via the `--ghidra-path` flag.
-
-### Live-Fire Interactive Analysis
-Launch the analysis and open the interactive TUI dashboard upon completion:
+### Step 3: Setup Ghidra Environment
+Wisdra needs to know where your Ghidra installation is located. You can either set it as a system environment variable, or pass it directly during runtime.
 ```powershell
-$env:GHIDRA_HOME="C:\path\to\ghidra_12.1.3_PUBLIC"
+$env:GHIDRA_HOME="C:\path\to\ghidra_12.1.x_PUBLIC"
+```
+
+## Usage Guide
+
+Wisdra V2 offers multiple modes of operation for both static analysis and live dynamic hunting.
+
+### 1. Standard Static Analysis (Ghidra Headless)
+Analyzes a binary file on disk, extracts heuristics, decompiles code, and generates a threat report.
+```powershell
 .\target\release\wisdra_core.exe analyze "C:\Suspicious\malware.exe"
 ```
 
-### Headless Triaging (No TUI)
-For bulk scanning or pipeline integrations, bypass the TUI and directly export the forensic report:
+### 2. Formal Verification Mode (Z3)
+Runs the static analysis and automatically feeds any discovered vulnerabilities into the Z3 SMT solver to mathematically verify exploitability.
 ```powershell
-.\target\release\wisdra_core.exe analyze -n "C:\Suspicious\malware.exe"
+.\target\release\wisdra_core.exe analyze "C:\Suspicious\malware.exe" --verify
 ```
-*(The intelligence report and generated YARA rule will be saved to the `output/` directory).*
 
-## Roadmap (V3 Future Targets)
+### 3. Live Process Memory Scanning (In-Memory Hunting)
+Bypasses disk analysis entirely and attaches to a live running process to scan its virtual memory map for injected payloads and RWX anomalies.
+```powershell
+# Scan a live process by its Process ID (PID)
+.\target\release\wisdra_core.exe live-scan 11864
+```
 
-While Wisdra V2 implements complete P-Code vulnerability hunting and YARA generation, the following upgrades are planned for the next evolutionary leap:
-
-- [ ] **SQLite Persistence:** Implement a local database to track analysis history, hash cross-referencing, and persistent threat actor heuristics across multiple sessions.
-- [ ] **ExposureZ3 Integration:** Bridge Wisdra's vulnerability findings into the Z3 SMT solver for automated exploit verification and dynamic constraint solving.
-- [ ] **Multi-Binary Ingestion:** Support bulk directory scanning for automated triage of massive malware dumps.
-- [ ] **LLM Heuristic Explanations:** Optional plugin to pipe decompiled C-code contexts to a local LLM for natural language vulnerability explanations.
+## Outputs
+All analysis reports, extracted YARA rules, and JSON telemetry are automatically saved to the `output/` directory located in the root of the project.
 
 ## Disclaimer
 
-Wisdra is a defensive security research tool intended solely for authorized binary analysis, malware research, and proactive cyber defense. The authors assume no liability for misuse. Ensure proper authorization before processing any binary.
-
----
-<p align="center">
-  <sub>Built with Rust & Ghidra — Weaponized for Threat Intelligence.</sub>
-</p>
+Wisdra is a defensive security research tool intended solely for authorized binary analysis, memory forensics, malware research, and proactive cyber defense. The authors assume no liability for misuse. Ensure proper authorization before processing any binary or scanning live memory environments.
