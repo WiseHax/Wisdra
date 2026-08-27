@@ -47,9 +47,7 @@ enum Commands {
 }
 
 fn main() {
-    println!("============================================================");
-    println!("[ WISDRA V2 :: STANDALONE CORE ]");
-    println!("============================================================\n");
+    println!("[*] Initializing Wisdra V2 Core Engine...\n");
 
     let cli = Cli::parse();
 

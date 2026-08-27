@@ -2,9 +2,7 @@ use std::path::Path;
 use std::process::Command;
 
 pub fn run_exposure_z3(target_path: &str) -> Result<(), String> {
-    println!("\n============================================================");
-    println!("[ WISDRA V2 :: FORMAL VERIFICATION ENGINE (EXPOSUREZ3) ]");
-    println!("============================================================\n");
+    println!("\n[*] Initializing Formal Verification Engine (ExposureZ3)...");
     
     let target_abs = match std::fs::canonicalize(target_path) {
         Ok(path) => path,
