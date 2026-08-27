@@ -6,6 +6,7 @@ mod ui;
 mod mitre;
 mod yara;
 mod verifier;
+mod memory;
 
 use clap::{Parser, Subcommand};
 use std::env;
@@ -36,6 +37,12 @@ enum Commands {
         /// Automatically verify exploitability with ExposureZ3 (Formal Verification)
         #[arg(long, short = 'v', default_value_t = false)]
         verify: bool,
+    },
+    
+    /// Attach to a live process to scan for memory anomalies (Process Hollowing/Injection)
+    LiveScan {
+        /// The Process ID (PID) to attach to and scan
+        pid: u32,
     },
 }
 
@@ -92,6 +99,11 @@ fn main() {
                 Err(e) => {
                     eprintln!("\n[-] FATAL ERROR: {}", e);
                 }
+            }
+        },
+        Commands::LiveScan { pid } => {
+            if let Err(e) = memory::scan_process_memory(*pid) {
+                eprintln!("\n[-] MEMORY SCAN ERROR: {}", e);
             }
         }
     }
