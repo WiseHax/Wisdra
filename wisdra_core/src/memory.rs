@@ -44,7 +44,37 @@ pub fn scan_process_memory(pid: u32) -> Result<(), String> {
                      mem_info.BaseAddress as usize, mem_info.RegionSize);
             suspicious_regions += 1;
             
-            // In a future update, we will dump this memory to disk here and pass it to Ghidra
+            // PAYLOAD EXTRACTOR: Dump the RWX memory to disk for Ghidra analysis
+            let mut buffer: Vec<u8> = vec![0; mem_info.RegionSize];
+            let mut bytes_read = 0;
+            
+            let success = unsafe {
+                windows::Win32::System::Diagnostics::Debug::ReadProcessMemory(
+                    process_handle,
+                    mem_info.BaseAddress,
+                    buffer.as_mut_ptr() as *mut c_void,
+                    mem_info.RegionSize,
+                    Some(&mut bytes_read),
+                )
+            };
+            
+            if success.is_ok() && bytes_read > 0 {
+                buffer.truncate(bytes_read); // Ensure we only save what we read
+                
+                let output_dir = std::path::Path::new("output");
+                let _ = std::fs::create_dir_all(output_dir); // Ensure output dir exists
+                let dump_filename = format!("pid_{}_region_0x{:X}.bin", pid, mem_info.BaseAddress as usize);
+                let dump_path = output_dir.join(&dump_filename);
+                
+                if let Ok(mut file) = std::fs::File::create(&dump_path) {
+                    use std::io::Write;
+                    if file.write_all(&buffer).is_ok() {
+                        println!("    [>] Successfully extracted {} bytes to output/{}", bytes_read, dump_filename);
+                    }
+                }
+            } else {
+                println!("    [-] Failed to extract memory at 0x{:X} (Access Denied or Pagable)", mem_info.BaseAddress as usize);
+            }
         }
 
         // Move to the next memory region
