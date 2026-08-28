@@ -7,6 +7,7 @@ mod mitre;
 mod yara;
 mod verifier;
 mod memory;
+mod emulator;
 
 use clap::{Parser, Subcommand};
 use std::env;
@@ -43,6 +44,12 @@ enum Commands {
     LiveScan {
         /// The Process ID (PID) to attach to and scan
         pid: u32,
+    },
+
+    /// Safely detonate an extracted binary payload inside the Unicorn CPU Sandbox
+    Emulate {
+        /// Path to the extracted .bin payload
+        payload_file: String,
     },
 }
 
@@ -102,6 +109,21 @@ fn main() {
         Commands::LiveScan { pid } => {
             if let Err(e) = memory::scan_process_memory(*pid) {
                 eprintln!("\n[-] MEMORY SCAN ERROR: {}", e);
+            }
+        },
+        Commands::Emulate { payload_file } => {
+            // Read the raw binary payload
+            match std::fs::read(payload_file) {
+                Ok(bytes) => {
+                    // Detonate it in the sandbox at an arbitrary base address
+                    let base_address = 0x1000000;
+                    if let Err(e) = emulator::sandbox_and_emulate(&bytes, base_address) {
+                        eprintln!("\n[-] EMULATION ERROR: {}", e);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("\n[-] Failed to read payload file '{}': {}", payload_file, e);
+                }
             }
         }
     }
