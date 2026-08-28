@@ -22,7 +22,7 @@ windows = { version = "0.54.0", features = [
 
 # Unicorn Engine for Micro-Emulation & Deobfuscation (Sandbox)
 # Note: Requires Visual Studio C++ Build Tools (MSVC) + CMake to compile
-# unicorn-engine = "2.0.0"
+unicorn-engine = "2.0.0"
 
 [profile.release]
 opt-level = "z"     # Optimize for size
