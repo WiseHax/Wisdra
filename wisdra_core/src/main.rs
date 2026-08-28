@@ -7,7 +7,7 @@ mod mitre;
 mod yara;
 mod verifier;
 mod memory;
-mod emulator;
+// mod emulator; // Temporarily disabled until MSVC is installed
 
 use clap::{Parser, Subcommand};
 use std::env;
@@ -111,20 +111,19 @@ fn main() {
                 eprintln!("\n[-] MEMORY SCAN ERROR: {}", e);
             }
         },
-        Commands::Emulate { payload_file } => {
-            // Read the raw binary payload
-            match std::fs::read(payload_file) {
-                Ok(bytes) => {
-                    // Detonate it in the sandbox at an arbitrary base address
-                    let base_address = 0x1000000;
-                    if let Err(e) = emulator::sandbox_and_emulate(&bytes, base_address) {
-                        eprintln!("\n[-] EMULATION ERROR: {}", e);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("\n[-] Failed to read payload file '{}': {}", payload_file, e);
-                }
-            }
+        Commands::Emulate { payload_file: _ } => {
+            println!("[-] Emulation is currently disabled. Please install MSVC Build Tools and CMake.");
+            // match std::fs::read(payload_file) {
+            //     Ok(bytes) => {
+            //         let base_address = 0x1000000;
+            //         if let Err(e) = emulator::sandbox_and_emulate(&bytes, base_address) {
+            //             eprintln!("\n[-] EMULATION ERROR: {}", e);
+            //         }
+            //     }
+            //     Err(e) => {
+            //         eprintln!("\n[-] Failed to read payload file '{}': {}", payload_file, e);
+            //     }
+            // }
         }
     }
 }

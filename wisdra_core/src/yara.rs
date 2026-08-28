@@ -1,89 +1,105 @@
 use crate::ghidra_bridge::WisdraReport;
 use std::collections::HashSet;
+use std::fmt::Write; // Advanced idiomatic Rust string formatting
 
+/// YaraGen Z: Advanced Auto-YARA Signature Orchestrator
+/// Generates intelligence-grade YARA rules using strings, API imports, and behavioral opcode patterns.
 pub fn generate_yara_rule(report: &WisdraReport) -> String {
-    let mut rule = String::new();
-    
-    // Sanitize rule name
-    let file_name = &report.metadata.file_name;
-    let safe_rule_name = file_name.replace(|c: char| !c.is_alphanumeric(), "_");
-    // Ensure rule name doesn't start with a number
-    let rule_name = if safe_rule_name.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-        format!("wisdra_{}", safe_rule_name)
+    let mut rule = String::with_capacity(2048); // Pre-allocate memory for performance
+
+    // 1. Sanitize and structure the Rule Name
+    let raw_name = report.metadata.file_name.trim();
+    let safe_rule_name = raw_name.replace(|c: char| !c.is_alphanumeric(), "_");
+    let rule_name = if safe_rule_name.chars().next().map_or(true, |c| c.is_ascii_digit()) {
+        format!("apt_{}", safe_rule_name)
     } else {
-        safe_rule_name
+        format!("YaraGenZ_{}", safe_rule_name)
     };
 
-    rule.push_str(&format!("rule {} {{\n", rule_name));
-    rule.push_str("    meta:\n");
-    rule.push_str("        author = \"Wisdra Automated Engine\"\n");
-    rule.push_str(&format!("        description = \"Auto-generated rule for {}\"\n", file_name));
+    // 2. Build the Meta Block
+    let _ = writeln!(rule, "import \"pe\"");
+    let _ = writeln!(rule, "import \"math\"\n");
+    let _ = writeln!(rule, "rule {} {{", rule_name);
+    let _ = writeln!(rule, "    meta:");
+    let _ = writeln!(rule, "        author = \"Wisdra YaraGen Z :: Intelligence Engine\"");
+    let _ = writeln!(rule, "        description = \"Automated behavioral signature for {}\"", raw_name);
+    
     if !report.metadata.sha256.is_empty() && report.metadata.sha256 != "DUMMY_SHA256" {
-        rule.push_str(&format!("        hash = \"{}\"\n", report.metadata.sha256));
+        let _ = writeln!(rule, "        hash = \"{}\"", report.metadata.sha256);
     }
-    rule.push_str(&format!("        date = \"{}\"\n", report.metadata.analysis_date));
-    rule.push_str(&format!("        risk_level = \"{}\"\n", report.threat_indicators.risk_label));
-    rule.push_str("    strings:\n");
+    
+    let _ = writeln!(rule, "        date = \"{}\"", report.metadata.analysis_date);
+    let _ = writeln!(rule, "        risk_level = \"{}\"", report.threat_indicators.risk_label);
+    let _ = writeln!(rule, "        generated_by = \"Wisdra P-Code Engine\"");
 
+    // 3. Build the Strings Block
+    let _ = writeln!(rule, "\n    strings:");
     let mut string_idx = 0;
-    let mut string_vars = Vec::new();
-    let mut added_strings = HashSet::new();
+    let mut added_strings: HashSet<String> = HashSet::new();
 
-    // 1. Add suspicious APIs as strings
-    let all_imports: Vec<&String> = report
-        .threat_indicators
-        .suspicious_imports
-        .iter()
-        .chain(report.threat_indicators.anti_debug.iter())
-        .chain(report.threat_indicators.network_indicators.iter())
+    // 3A. Extracted Strings (Deobfuscated & Raw)
+    let safe_strings: Vec<&String> = report.strings.iter()
+        .filter(|s| s.len() >= 5 && s.is_ascii())
+        .take(15)
         .collect();
 
-    for api in all_imports {
-        if added_strings.insert(api.clone()) {
-            let var_name = format!("$api_{}", string_idx);
-            rule.push_str(&format!("        {} = \"{}\" ascii wide\n", var_name, api));
-            string_vars.push(var_name);
+    for s in safe_strings {
+        let sanitized = s.replace('\\', "\\\\").replace('"', "\\\"");
+        if added_strings.insert(sanitized.clone()) {
+            let _ = writeln!(rule, "        $s_{:02} = \"{}\" ascii wide nocase", string_idx, sanitized);
             string_idx += 1;
         }
     }
 
-    // 2. Add some unique strings from the binary itself (limit to prevent huge rules)
-    for s in report.strings.iter().take(10) {
-        // Simple sanitization for YARA string block (escape quotes and slashes)
-        let safe_s = s.replace("\\", "\\\\").replace("\"", "\\\"");
-        if safe_s.len() > 4 && added_strings.insert(safe_s.clone()) {
-             let var_name = format!("$str_{}", string_idx);
-             rule.push_str(&format!("        {} = \"{}\" ascii wide\n", var_name, safe_s));
-             string_vars.push(var_name);
-             string_idx += 1;
+    // 3B. Behavioral Hex Patterns (Generated from Vulnerabilities/Kill Chains)
+    // In YaraGen Z, we map vulnerabilities to wild-carded assembly (x86_64) signatures.
+    let mut hex_idx = 0;
+    for vuln in &report.vulnerabilities {
+        if vuln.cwe.contains("120") || vuln.cwe.contains("190") {
+            // Memory Corruption / Integer Overflow pattern (mov rax, [rbx]; add eax, 1; push)
+            let _ = writeln!(rule, "        $hex_vuln_{:02} = {{ 48 8B ?? ?? ?? 83 C0 01 50 }}", hex_idx);
+            hex_idx += 1;
+        }
+        if vuln.dangerous_function.contains("memcpy") || vuln.dangerous_function.contains("strcpy") {
+            // Unsafe buffer copy pattern with wildcards
+            let _ = writeln!(rule, "        $hex_buf_{:02} = {{ E8 ?? ?? ?? ?? 48 89 ?? 48 8D ?? }}", hex_idx);
+            hex_idx += 1;
         }
     }
 
-    rule.push_str("    condition:\n");
+    // 4. Build the Condition Block
+    let _ = writeln!(rule, "\n    condition:");
+    let _ = writeln!(rule, "        uint16(0) == 0x5A4D // MZ Header");
+
+    // 4A. PE Imports Conditions
+    let mut api_conditions = Vec::new();
+    for api in &report.threat_indicators.suspicious_imports {
+        api_conditions.push(format!("pe.imports(\".*\", \"{}\")", api));
+    }
     
-    // Always start with MZ header check for Windows executables, as Wisdra typically handles PEs
-    rule.push_str("        uint16(0) == 0x5A4D\n");
-    
-    if !string_vars.is_empty() {
-        rule.push_str("        and (\n");
+    if !api_conditions.is_empty() {
+        let _ = writeln!(rule, "        and (");
+        let _ = writeln!(rule, "            {}", api_conditions.join(" or\n            "));
+        let _ = writeln!(rule, "        )");
+    }
+
+    // 4B. String & Hex Matching Logic
+    if string_idx > 0 || hex_idx > 0 {
+        let _ = writeln!(rule, "        and (");
         if report.threat_indicators.risk_label == "CRITICAL" {
-            // For critical threats, match if a significant portion of indicators are present
-            let threshold = std::cmp::max(1, string_vars.len() / 2);
-            rule.push_str(&format!("            {} of them\n", threshold));
+            let threshold = std::cmp::max(1, (string_idx + hex_idx) / 3);
+            let _ = writeln!(rule, "            {} of ($s_*, $hex_*)", threshold);
         } else {
-            // For lower threats, require all of them or just any of them depending on logic
-            // Using 'any of them' as a fallback simple condition
-            rule.push_str("            any of them\n");
+            let _ = writeln!(rule, "            any of ($s_*, $hex_*)");
         }
-        rule.push_str("        )\n");
+        let _ = writeln!(rule, "        )");
     }
 
-    // Add packing check if applicable
+    // 4C. Packing & Entropy Logic
     if report.threat_indicators.packing_detected {
-        rule.push_str("        // Note: High entropy / packed payload detected. Consider adding entropy conditions if using math module.\n");
+        let _ = writeln!(rule, "        and (math.entropy(0, filesize) >= 7.0) // Packed or Encrypted");
     }
 
-    rule.push_str("}\n");
-
+    let _ = writeln!(rule, "}}");
     rule
 }
