@@ -7,7 +7,8 @@ mod mitre;
 mod yara;
 mod verifier;
 mod memory;
-mod emulator;
+mod radar;
+// mod emulator;
 
 use clap::{Parser, Subcommand};
 use std::env;
@@ -40,6 +41,16 @@ enum Commands {
         verify: bool,
     },
     
+    /// Scan a whole directory of executables in parallel and cluster them by threat behavior
+    Triage {
+        /// Directory containing multiple suspicious binaries
+        target_dir: String,
+
+        /// Optional path to Ghidra installation (fallback: GHIDRA_HOME env var)
+        #[arg(long, short)]
+        ghidra_path: Option<String>,
+    },
+
     /// Attach to a live process to scan for memory anomalies (Process Hollowing/Injection)
     LiveScan {
         /// The Process ID (PID) to attach to and scan
@@ -106,25 +117,35 @@ fn main() {
                 }
             }
         },
+        Commands::Triage { target_dir, ghidra_path } => {
+            let default_ghidra = env::var("GHIDRA_HOME").unwrap_or_default();
+            let final_ghidra = ghidra_path.as_deref().unwrap_or(&default_ghidra);
+            if final_ghidra.is_empty() {
+                eprintln!("[-] Error: GHIDRA_HOME is not set and --ghidra-path was not provided.");
+                std::process::exit(1);
+            }
+            if let Err(e) = radar::run_bulk_triage(target_dir, final_ghidra) {
+                eprintln!("\n[-] RADAR SCAN ERROR: {}", e);
+            }
+        },
         Commands::LiveScan { pid } => {
             if let Err(e) = memory::scan_process_memory(*pid) {
                 eprintln!("\n[-] MEMORY SCAN ERROR: {}", e);
             }
         },
-        Commands::Emulate { payload_file } => {
-            // Read the raw binary payload
-            match std::fs::read(payload_file) {
-                Ok(bytes) => {
-                    // Detonate it in the sandbox at an arbitrary base address
-                    let base_address = 0x1000000;
-                    if let Err(e) = emulator::sandbox_and_emulate(&bytes, base_address) {
-                        eprintln!("\n[-] EMULATION ERROR: {}", e);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("\n[-] Failed to read payload file '{}': {}", payload_file, e);
-                }
-            }
+        Commands::Emulate { payload_file: _ } => {
+            println!("[-] Emulation is currently disabled. Please install MSVC Build Tools and CMake.");
+            // match std::fs::read(payload_file) {
+            //     Ok(bytes) => {
+            //         let base_address = 0x1000000;
+            //         if let Err(e) = emulator::sandbox_and_emulate(&bytes, base_address) {
+            //             eprintln!("\n[-] EMULATION ERROR: {}", e);
+            //         }
+            //     }
+            //     Err(e) => {
+            //         eprintln!("\n[-] Failed to read payload file '{}': {}", payload_file, e);
+            //     }
+            // }
         }
     }
 }

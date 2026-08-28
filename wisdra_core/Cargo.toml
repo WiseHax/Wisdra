@@ -9,6 +9,8 @@ crossterm = "0.29.0"
 ratatui = "0.30.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+rayon = "1.10.0"
+walkdir = "2.5.0"
 
 # Windows API for Live Memory Extraction (Valkyrie Integration)
 windows = { version = "0.54.0", features = [
@@ -22,7 +24,7 @@ windows = { version = "0.54.0", features = [
 
 # Unicorn Engine for Micro-Emulation & Deobfuscation (Sandbox)
 # Note: Requires Visual Studio C++ Build Tools (MSVC) + CMake to compile
-unicorn-engine = "2.0.0"
+# unicorn-engine = "2.0.0"
 
 [profile.release]
 opt-level = "z"     # Optimize for size
