@@ -7,6 +7,9 @@
 /wisdra_core/output/
 wisdra_temp_proj/
 
+# ExposureZ3 is a separate repository, cloned alongside for local use only
+/ExposureZ3/
+
 # DLLs and Compiled Binaries
 *.exe
 *.dll
