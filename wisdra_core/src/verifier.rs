@@ -1,35 +1,18 @@
+//! Optional hand-off to the external ExposureZ3 formal verification engine.
+
+use crate::config;
+use crate::error::Result;
 use std::path::Path;
 use std::process::Command;
 
-pub fn run_exposure_z3(target_path: &str) -> Result<(), String> {
-    println!("\n[*] Initializing Formal Verification Engine (ExposureZ3)...");
-    
-    let target_abs = match std::fs::canonicalize(target_path) {
-        Ok(path) => path,
-        Err(e) => return Err(format!("Target not found for verification: {}", e)),
-    };
-    
-    // Look for exposure_z3 in the release directory
-    let workspace_dir = Path::new("..").canonicalize().unwrap_or_else(|_| Path::new(".").to_path_buf());
-    let verifier_exe = workspace_dir.join("target").join("release").join("exposure_z3.exe");
-    
-    if !verifier_exe.exists() {
-        return Err(format!("ExposureZ3 binary not found at: {}\nPlease run `cargo build --release` in the workspace root.", verifier_exe.display()));
-    }
-    
-    println!("[*] Launching Z3 Theorem Prover on extracted constraints...");
-    
-    let mut child = Command::new(verifier_exe)
-        .arg("analyze")
-        .arg(target_abs)
-        .spawn()
-        .map_err(|e| format!("Failed to spawn ExposureZ3: {}", e))?;
-        
-    let status = child.wait().map_err(|e| format!("Failed to wait for ExposureZ3: {}", e))?;
-    
+/// Run `exposure_z3 analyze <target>`, inheriting stdio. A non-zero exit is
+/// reported as a warning rather than failing the whole analysis.
+pub fn run_exposure_z3(target: &Path, explicit: Option<&Path>) -> Result<()> {
+    let exe = config::resolve_verifier(explicit)?;
+    tracing::info!(verifier = %exe.display(), "launching ExposureZ3");
+    let status = Command::new(&exe).arg("analyze").arg(target).status()?;
     if !status.success() {
-        return Err(format!("ExposureZ3 exited with status: {}", status));
+        tracing::warn!("ExposureZ3 exited with {status}");
     }
-    
     Ok(())
 }
