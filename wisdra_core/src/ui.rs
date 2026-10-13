@@ -1,17 +1,17 @@
+use crate::ghidra_bridge::WisdraReport;
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
+    Terminal,
     backend::{Backend, CrosstermBackend},
-    layout::{Constraint, Direction, Layout, Alignment},
+    layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Paragraph, Row, Table},
-    Terminal,
 };
 use std::{error::Error, io};
-use crate::ghidra_bridge::WisdraReport;
 
 pub fn render_dashboard(report: &WisdraReport) -> Result<(), Box<dyn Error>> {
     // Setup terminal
@@ -26,10 +26,7 @@ pub fn render_dashboard(report: &WisdraReport) -> Result<(), Box<dyn Error>> {
 
     // Restore terminal
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-    )?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen,)?;
     terminal.show_cursor()?;
 
     if let Err(err) = res {
@@ -92,7 +89,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, report: &WisdraReport) -> io:
             let mut mitre_summary = String::new();
             if !mitre_mappings.is_empty() {
                 mitre_summary.push_str("\nMITRE ATT&CK:\n");
-                for (_i, m) in mitre_mappings.iter().take(4).enumerate() {
+                for m in mitre_mappings.iter().take(4) {
                     mitre_summary.push_str(&format!("- {} ({})\n", m.technique, m.id));
                 }
                 if mitre_mappings.len() > 4 {
@@ -131,14 +128,14 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, report: &WisdraReport) -> io:
             // =========================================================================
             // Build table rows for categorized APIs
             let mut api_rows = Vec::new();
-            
+
             for api in &report.threat_indicators.anti_debug {
                 api_rows.push(Row::new(vec![
                     "<anti_debug>".to_string(),
                     api.clone()
                 ]).style(Style::default().fg(Color::Yellow)));
             }
-            
+
             for api in &report.threat_indicators.suspicious_imports {
                 // If it was already included in anti_debug, skip to avoid dupes in this view
                 if !report.threat_indicators.anti_debug.contains(api) {
@@ -161,7 +158,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, report: &WisdraReport) -> io:
                 )
                 .block(Block::default().title(" Suspicious Operations ").borders(Borders::ALL).border_style(Style::default().fg(Color::DarkGray)))
                 .column_spacing(2);
-                
+
             f.render_widget(table, main_chunks[1]);
 
             // =========================================================================
@@ -176,7 +173,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, report: &WisdraReport) -> io:
                     "MEDIUM" => Color::Yellow,
                     _ => Color::Green,
                 };
-                
+
                 vuln_rows.push(Row::new(vec![
                     vuln.cwe.clone(),
                     vuln.severity.clone(),
@@ -190,9 +187,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, report: &WisdraReport) -> io:
             }
 
             let vuln_table = Table::new(vuln_rows, [
-                Constraint::Percentage(15), 
-                Constraint::Percentage(15), 
-                Constraint::Percentage(40), 
+                Constraint::Percentage(15),
+                Constraint::Percentage(15),
+                Constraint::Percentage(40),
                 Constraint::Percentage(30)
             ])
                 .header(
@@ -212,14 +209,15 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, report: &WisdraReport) -> io:
                 .style(Style::default().fg(Color::DarkGray))
                 .alignment(Alignment::Right);
             f.render_widget(footer, chunks[2]);
-            
+
         }).map_err(|e| io::Error::other(e.to_string()))?;
 
         // Handle Input
         if event::poll(std::time::Duration::from_millis(50))?
             && let Event::Key(key) = event::read()?
-                && (key.code == KeyCode::Char('q') || key.code == KeyCode::Esc) {
-                    return Ok(());
-                }
+            && (key.code == KeyCode::Char('q') || key.code == KeyCode::Esc)
+        {
+            return Ok(());
+        }
     }
 }
