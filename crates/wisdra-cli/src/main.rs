@@ -1,27 +1,20 @@
-//! Wisdra: automated binary analysis and live memory forensics.
+//! Wisdra command-line interface.
 //!
-//! Pipeline: CLI -> ghidra_bridge (headless Ghidra + WisdraExtract.java)
-//! -> JSON report -> Markdown/YARA/MITRE (reporter) -> TUI (ui).
+//! Engines live in `wisdra-engine`: `--fast` runs the native Rust parser,
+//! otherwise Ghidra headless + WisdraExtract.java. Either way the report
+//! feeds the Markdown/YARA writers and the TUI dashboard.
 
-mod config;
-mod error;
-mod ghidra_bridge;
-mod hashing;
-mod memory;
-mod mitre;
-mod radar;
-mod reporter;
 mod ui;
-mod verifier;
-mod yara;
 
 use anyhow::Context;
 use clap::{ArgAction, Args, Parser, Subcommand};
-use ghidra_bridge::{GhidraOptions, WisdraReport};
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+use wisdra_engine::ghidra::GhidraOptions;
+use wisdra_engine::model::WisdraReport;
+use wisdra_engine::{Engine, config, ghidra, memory, native, radar, reporter, verifier, yara};
 
 #[derive(Parser)]
 #[command(name = "wisdra", version, about = "Automated binary analysis & live memory forensics")]
@@ -39,12 +32,16 @@ struct Cli {
 }
 
 #[derive(Args, Clone)]
-struct GhidraArgs {
+struct EngineArgs {
+    /// Native Rust triage only: no Ghidra or Java, finishes in milliseconds
+    #[arg(long, short = 'f', conflicts_with_all = ["deep", "ghidra_path"])]
+    fast: bool,
+
     /// Ghidra installation directory (fallback: GHIDRA_HOME, then GHIDRA_INSTALL_DIR)
     #[arg(long, short = 'g')]
     ghidra_path: Option<PathBuf>,
 
-    /// Per-sample analysis timeout in seconds
+    /// Per-sample Ghidra timeout in seconds
     #[arg(long, short = 't', default_value_t = 600)]
     timeout: u64,
 
@@ -55,13 +52,13 @@ struct GhidraArgs {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Analyze a binary with Ghidra's headless engine
+    /// Analyze a binary (Ghidra deep analysis, or native triage with --fast)
     #[command(alias = "scan")]
     Analyze {
         /// Path to the target binary
         target: PathBuf,
         #[command(flatten)]
-        ghidra: GhidraArgs,
+        engine: EngineArgs,
         /// Skip the interactive dashboard (implied when stdout is not a terminal)
         #[arg(long, short = 'n')]
         no_ui: bool,
@@ -76,15 +73,15 @@ enum Commands {
         z3_path: Option<PathBuf>,
     },
 
-    /// Analyze every binary in a directory and cluster by behavior
+    /// Analyze every binary in a directory and cluster the results
     Triage {
-        /// Directory of samples (searched recursively)
+        /// Directory of samples (searched recursively; detected by extension or magic bytes)
         target_dir: PathBuf,
         #[command(flatten)]
-        ghidra: GhidraArgs,
-        /// Concurrent Ghidra instances (each JVM needs 1-4 GB of RAM)
-        #[arg(long, short = 'j', default_value_t = 2)]
-        jobs: usize,
+        engine: EngineArgs,
+        /// Concurrent analyses [default: CPU count with --fast, otherwise 2 since each Ghidra JVM needs 1-4 GB]
+        #[arg(long, short = 'j')]
+        jobs: Option<usize>,
         /// Print the triage summary as JSON to stdout
         #[arg(long)]
         json: bool,
@@ -112,6 +109,9 @@ enum Commands {
         #[arg(long, env = "WISDRA_EXPOSURE_Z3")]
         z3_path: Option<PathBuf>,
     },
+
+    /// Print version, platform and engine information
+    Info,
 }
 
 fn main() -> ExitCode {
@@ -139,28 +139,42 @@ fn init_tracing(verbose: u8) {
     tracing_subscriber::fmt().with_env_filter(filter).with_target(false).with_writer(std::io::stderr).init();
 }
 
-fn ghidra_options(args: &GhidraArgs, output_dir: &Path) -> anyhow::Result<GhidraOptions> {
-    Ok(GhidraOptions {
-        ghidra_root: config::resolve_ghidra_root(args.ghidra_path.as_deref())?,
+fn engine(args: &EngineArgs, output_dir: &Path) -> anyhow::Result<Engine> {
+    if args.fast {
+        return Ok(Engine::Native { output_dir: output_dir.to_path_buf() });
+    }
+    Ok(Engine::Ghidra(GhidraOptions {
+        ghidra_root: config::resolve_ghidra_root(args.ghidra_path.as_deref())
+            .context("Ghidra is required for deep analysis (use --fast for native triage)")?,
         output_dir: output_dir.to_path_buf(),
         timeout: Duration::from_secs(args.timeout),
         deep: args.deep,
-    })
+    }))
 }
 
 fn run(cli: Cli) -> anyhow::Result<ExitCode> {
     let out = &cli.output_dir;
     match cli.command {
-        Commands::Analyze { target, ghidra, no_ui, json, verify, z3_path } => {
-            let opts = ghidra_options(&ghidra, out)?;
-            eprintln!("[*] Analyzing {} (timeout {}s)...", target.display(), ghidra.timeout);
-            let analysis = ghidra_bridge::run_headless_analysis(&target, &opts)?;
-            eprintln!("[+] JSON report:  {}", analysis.report_path.display());
-            eprintln!("[+] Ghidra log:   {}", analysis.log_path.display());
-            write_artifacts(&analysis.report, out)?;
+        Commands::Analyze { target, engine: args, no_ui, json, verify, z3_path } => {
+            let report = match engine(&args, out)? {
+                Engine::Native { output_dir } => {
+                    let started = Instant::now();
+                    let a = native::analyze_file(&target, &output_dir)?;
+                    eprintln!("[+] JSON report:  {}  ({} ms)", a.report_path.display(), started.elapsed().as_millis());
+                    a.report
+                }
+                Engine::Ghidra(opts) => {
+                    eprintln!("[*] Analyzing {} with Ghidra (timeout {}s)...", target.display(), args.timeout);
+                    let a = ghidra::run_headless_analysis(&target, &opts)?;
+                    eprintln!("[+] JSON report:  {}", a.report_path.display());
+                    eprintln!("[+] Ghidra log:   {}", a.log_path.display());
+                    a.report
+                }
+            };
+            write_artifacts(&report, out)?;
 
             if verify {
-                if analysis.report.vulnerabilities.is_empty() {
+                if report.vulnerabilities.is_empty() {
                     eprintln!("[*] Verification skipped: no vulnerabilities to verify.");
                 } else if let Err(e) = verifier::run_exposure_z3(&target, z3_path.as_deref()) {
                     eprintln!("[-] Formal verification unavailable: {e}");
@@ -168,21 +182,26 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             }
 
             if json {
-                println!("{}", serde_json::to_string_pretty(&analysis.report)?);
+                println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
-                show_dashboard(&analysis.report, no_ui)?;
+                show_dashboard(&report, no_ui)?;
             }
         }
-        Commands::Triage { target_dir, ghidra, jobs, json } => {
-            let opts = ghidra_options(&ghidra, out)?;
-            let summary = radar::run_bulk_triage(&target_dir, &opts, jobs)?;
+        Commands::Triage { target_dir, engine: args, jobs, json } => {
+            let engine = engine(&args, out)?;
+            let jobs = jobs.unwrap_or_else(|| match engine {
+                Engine::Native { .. } => std::thread::available_parallelism().map_or(4, |n| n.get()),
+                Engine::Ghidra(_) => 2,
+            });
+            let started = Instant::now();
+            let summary = radar::run_bulk_triage(&target_dir, &engine, jobs)?;
             let path = config::ensure_output_dir(out)?.join("triage_summary.json");
             std::fs::write(&path, serde_json::to_string_pretty(&summary)?)?;
             if json {
                 println!("{}", serde_json::to_string_pretty(&summary)?);
             } else {
                 radar::print_summary(&summary);
-                eprintln!("\n[+] Summary written to {}", path.display());
+                eprintln!("\n[+] Summary written to {} ({:.1}s)", path.display(), started.elapsed().as_secs_f64());
             }
             if summary.scanned == 0 {
                 return Ok(ExitCode::FAILURE);
@@ -192,11 +211,12 @@ fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             memory::scan_process_memory(pid, &out.join("dumps"))?;
         }
         Commands::Report { json_file, no_ui } => {
-            let report = ghidra_bridge::load_report(&json_file)?;
+            let report = wisdra_engine::load_report(&json_file)?;
             write_artifacts(&report, out)?;
             show_dashboard(&report, no_ui)?;
         }
         Commands::Setup { ghidra_path, z3_path } => return Ok(setup(ghidra_path.as_deref(), z3_path.as_deref())),
+        Commands::Info => print_info(),
     }
     Ok(ExitCode::SUCCESS)
 }
@@ -214,17 +234,48 @@ fn write_artifacts(report: &WisdraReport, out: &Path) -> anyhow::Result<()> {
 
 fn show_dashboard(report: &WisdraReport, no_ui: bool) -> anyhow::Result<()> {
     if no_ui || !std::io::stdout().is_terminal() {
-        println!(
-            "[+] {}  risk={} ({}/100)  vulns={}  kill_chains={}",
-            report.metadata.file_name,
-            report.threat_indicators.risk_label,
-            report.threat_indicators.risk_score,
-            report.vulnerabilities.len(),
-            report.kill_chains.len()
-        );
+        print_summary(report);
         return Ok(());
     }
     ui::render_dashboard(report).map_err(|e| anyhow::anyhow!("dashboard: {e}"))
+}
+
+fn print_summary(r: &WisdraReport) {
+    let t = &r.threat_indicators;
+    println!("[+] {}  [{}]  risk={} ({}/100)", r.metadata.file_name, r.metadata.engine, t.risk_label, t.risk_score);
+    println!(
+        "    format={}  arch={}  sections={}  imports={}",
+        r.metadata.file_format,
+        r.metadata.architecture,
+        r.sections.len(),
+        r.imports.len()
+    );
+    if let Some(b) = &r.binary {
+        let mut facts = vec![format!("signed={}", b.has_signature), format!("overlay={}B", b.overlay_size)];
+        if let Some(h) = &b.imphash {
+            facts.push(format!("imphash={h}"));
+        }
+        if let Some(i) = &b.interpreter {
+            facts.push(format!("interp={i}"));
+        }
+        println!("    {}", facts.join("  "));
+        if !b.packer_hints.is_empty() {
+            println!("    packer hints: {}", b.packer_hints.join(", "));
+        }
+    }
+    if !t.suspicious_imports.is_empty() {
+        println!("    suspicious APIs: {}", t.suspicious_imports.join(", "));
+    }
+    if r.metadata.engine == "ghidra" {
+        println!("    vulns={}  kill_chains={}", r.vulnerabilities.len(), r.kill_chains.len());
+    }
+}
+
+fn print_info() {
+    println!("wisdra {} ({}/{})", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH);
+    println!("report schema: v{}", wisdra_engine::model::SCHEMA_VERSION);
+    println!("engines:       native (PE/ELF/Mach-O), ghidra (headless + WisdraExtract.java)");
+    println!("live-scan:     {}", if cfg!(windows) { "available" } else { "Windows only" });
 }
 
 fn setup(ghidra_path: Option<&Path>, z3_path: Option<&Path>) -> ExitCode {
@@ -237,7 +288,10 @@ fn setup(ghidra_path: Option<&Path>, z3_path: Option<&Path>) -> ExitCode {
         }
     };
 
-    println!("Wisdra {} environment check\n", env!("CARGO_PKG_VERSION"));
+    println!(
+        "Wisdra {} environment check (needed for Ghidra mode; --fast needs none of this)\n",
+        env!("CARGO_PKG_VERSION")
+    );
     let root = config::resolve_ghidra_root(ghidra_path);
     check("Ghidra", root.as_ref().map(|p| p.display().to_string()).map_err(|e| e.to_string()), true);
     if let Ok(root) = &root {
@@ -294,7 +348,7 @@ fn java_major(line: &str) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
-    use super::java_major;
+    use super::*;
 
     #[test]
     fn parses_java_versions() {
@@ -302,5 +356,17 @@ mod tests {
         assert_eq!(java_major(r#"openjdk version "21" 2023-09-19"#), Some(21));
         assert_eq!(java_major(r#"java version "1.8.0_202""#), Some(8));
         assert_eq!(java_major("garbage"), None);
+    }
+
+    #[test]
+    fn cli_definition_is_valid() {
+        use clap::CommandFactory;
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn fast_conflicts_with_ghidra_flags() {
+        assert!(Cli::try_parse_from(["wisdra", "analyze", "x", "--fast", "--deep"]).is_err());
+        assert!(Cli::try_parse_from(["wisdra", "analyze", "x", "--fast"]).is_ok());
     }
 }
