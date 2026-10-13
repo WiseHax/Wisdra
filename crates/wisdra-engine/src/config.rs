@@ -49,7 +49,7 @@ pub fn resolve_script_dir() -> Result<PathBuf> {
     if let Some(dir) = exe_dir() {
         candidates.push(dir.join("scripts"));
     }
-    candidates.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("scripts"));
+    candidates.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts"));
     candidates.push(PathBuf::from("scripts"));
 
     for dir in candidates {

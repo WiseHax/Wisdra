@@ -26,6 +26,9 @@ pub enum WisdraError {
     #[error("Ghidra finished but produced no report (log: {0})")]
     NoReport(PathBuf),
 
+    #[error("cannot parse {path} as PE/ELF/Mach-O: {reason}")]
+    Unparseable { path: PathBuf, reason: String },
+
     #[error("failed to parse report {path}: {source}")]
     ReportParse { path: PathBuf, source: serde_json::Error },
 
