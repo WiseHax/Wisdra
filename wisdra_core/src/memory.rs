@@ -7,7 +7,8 @@ use crate::error::Result;
 use std::path::Path;
 
 /// Regions larger than this are reported but not dumped.
-pub const MAX_DUMP_BYTES: usize = 64 * 1024 * 1024;
+#[cfg(windows)]
+const MAX_DUMP_BYTES: usize = 64 * 1024 * 1024;
 
 #[cfg(not(windows))]
 pub fn scan_process_memory(_pid: u32, _output_dir: &Path) -> Result<usize> {
