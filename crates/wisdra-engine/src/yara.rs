@@ -4,7 +4,7 @@
 //! imports, section entropy). The file-format check is chosen from the
 //! report metadata, and every string literal is escaped for YARA.
 
-use crate::ghidra_bridge::WisdraReport;
+use crate::model::WisdraReport;
 use std::collections::HashSet;
 use std::fmt::Write;
 
@@ -14,7 +14,7 @@ const MIN_STRING_LEN: usize = 6;
 pub fn generate_yara_rule(report: &WisdraReport) -> String {
     let meta = &report.metadata;
     let is_pe = meta.is_pe();
-    let is_elf = meta.file_format.to_ascii_lowercase().contains("elf");
+    let is_elf = meta.is_elf();
     let has_hash = is_real_sha256(&meta.sha256);
 
     let strings = select_strings(&report.strings);
@@ -144,7 +144,7 @@ fn escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ghidra_bridge::tests::sample;
+    use crate::fixtures::sample;
 
     #[test]
     fn pe_rule_uses_regex_imports_and_no_fabricated_hex() {
