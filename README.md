@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/WISDRA-v2.1.0-0d1117?style=for-the-badge&labelColor=161b22&color=58a6ff" alt="version"/>
+  <img src="https://img.shields.io/badge/WISDRA-v2.2.0-0d1117?style=for-the-badge&labelColor=161b22&color=58a6ff" alt="version"/>
   <img src="https://img.shields.io/badge/Rust-Memory%20Safe-0d1117?style=for-the-badge&logo=rust&labelColor=161b22&color=f97583" alt="rust"/>
   <img src="https://img.shields.io/badge/Ghidra-12.x%20Native-0d1117?style=for-the-badge&labelColor=161b22&color=56d364" alt="ghidra"/>
   <img src="https://img.shields.io/badge/License-MIT-0d1117?style=for-the-badge&labelColor=161b22&color=d2a8ff" alt="license"/>
@@ -54,16 +54,45 @@ elease\wisdra.exe setup
 
 | Command | What it does |
 |---|---|
+| `wisdra analyze <file> --fast` | **Native triage in milliseconds** with no Ghidra or Java: sections, entropy, imports, imphash, signature, overlay, packer hints, strings |
 | `wisdra analyze <file>` | Ghidra headless analysis, then the JSON/Markdown/YARA report and the TUI dashboard |
 | `wisdra analyze <file> --no-ui` | Same, with a one-line summary instead of the TUI (automatic when piped) |
 | `wisdra analyze <file> --json` | Print the final JSON report to stdout, for pipelines |
 | `wisdra analyze <file> --verify` | Also run ExposureZ3 (`--z3-path` / `WISDRA_EXPOSURE_Z3`, next to `wisdra`, or `PATH`) |
-| `wisdra triage <dir> -j 2` | Analyze a directory with N concurrent Ghidra JVMs and cluster the results |
+| `wisdra triage <dir> --fast` | Native triage of a whole directory in parallel (about 600 binaries in 4 s), clustered by imphash |
+| `wisdra triage <dir> -j 2` | Same with Ghidra, using N concurrent JVMs |
 | `wisdra live-scan <pid>` | *(Windows)* Flag and dump committed RWX regions of a running process |
 | `wisdra report <report.json>` | Regenerate the Markdown and YARA output, and the dashboard, from a saved report |
-| `wisdra setup` | Environment check |
+| `wisdra setup` | Environment check for Ghidra mode |
+| `wisdra info` | Version, platform and engine information |
+
+Triage finds samples by extension or by magic bytes, so extensionless ELF and Mach-O files are included.
 
 Common options: `--timeout <secs>` (default 600), `--deep`, `--ghidra-path`, `--output-dir` (`WISDRA_OUTPUT_DIR`), `-v`/`-vv` (or `WISDRA_LOG=debug`).
+
+## Engines
+
+| | `--fast` (native) | default (Ghidra) |
+|---|---|---|
+| Requirements | none | Ghidra + JDK 21 |
+| Speed | about 10 ms per file | minutes per file |
+| Formats | PE, ELF, Mach-O (including fat binaries) | anything Ghidra loads |
+| Sections, entropy, imports, strings | yes | yes |
+| imphash (byte-compatible with `pefile`), signature, overlay, packer hints | yes | yes (attached from the native parser) |
+| Decompilation, P-Code vulnerability hunting, kill chains, deobfuscation | no | yes |
+
+Both engines write the same versioned JSON schema (`schema_version`, with `metadata.engine` set to `native` or `ghidra`).
+
+## Project layout
+
+```
+crates/
+  wisdra-model/    report schema shared by every engine and frontend
+  wisdra-engine/   native parser, Ghidra orchestration, YARA/MITRE/Markdown, triage, live scan
+  wisdra-cli/      the `wisdra` binary and the terminal dashboard
+scripts/
+  WisdraExtract.java   Ghidra post-script
+```
 
 ## Outputs
 Everything goes in `--output-dir` (default `./output`), keyed by the sample's SHA-256:
