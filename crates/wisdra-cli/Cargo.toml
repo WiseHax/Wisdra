@@ -1,0 +1,24 @@
+[package]
+name = "wisdra-cli"
+description = "Wisdra command-line interface and terminal dashboard."
+readme = "../../README.md"
+categories = ["command-line-utilities"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "wisdra"
+path = "src/main.rs"
+
+[dependencies]
+wisdra-engine = { path = "../wisdra-engine" }
+anyhow = "1"
+clap = { version = "4.5", features = ["derive", "env"] }
+crossterm = "0.29"
+ratatui = "0.30"
+serde_json = "1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
