@@ -1,34 +1,43 @@
 [package]
 name = "wisdra_core"
-version = "0.1.0"
-edition = "2024"
+description = "Automated binary analysis and live memory forensics, orchestrating Ghidra's headless engine."
+readme = "../README.md"
+keywords = ["malware-analysis", "reverse-engineering", "ghidra", "yara", "forensics"]
+categories = ["command-line-utilities"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "wisdra"
+path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4.6.6", features = ["derive"] }
-crossterm = "0.29.0"
-ratatui = "0.30.2"
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
-rayon = "1.10.0"
-walkdir = "2.5.0"
+anyhow = "1"
+clap = { version = "4.5", features = ["derive", "env"] }
+crossterm = "0.29"
+hex = "0.4"
+md-5 = "0.10"
+ratatui = "0.30"
+rayon = "1.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.10"
+sha2 = "0.10"
+tempfile = "3"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+walkdir = "2.5"
 
-# Windows API for Live Memory Extraction (Valkyrie Integration)
-windows = { version = "0.54.0", features = [
+# Windows API for live memory scanning (Windows-only feature)
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_System_Memory",
     "Win32_System_Threading",
     "Win32_System_Diagnostics_Debug",
-    "Win32_System_ProcessStatus",
-    "Win32_Security"
 ] }
-
-# Unicorn Engine for Micro-Emulation & Deobfuscation (Sandbox)
-# Note: Requires Visual Studio C++ Build Tools (MSVC) + CMake to compile
-# unicorn-engine = "2.0.0"
-
-[profile.release]
-opt-level = "z"     # Optimize for size
-lto = true          # Enable Link-Time Optimization
-codegen-units = 1   # Maximize size reduction/performance optimization
-panic = "abort"     # Remove unwind payload to reduce binary size
-strip = true        # Strip symbols from the binary

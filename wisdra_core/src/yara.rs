@@ -1,105 +1,190 @@
+//! Auto-YARA rule generation from a Wisdra report.
+//!
+//! Rules are built only from evidence observed in the sample (strings,
+//! imports, section entropy). The file-format check is chosen from the
+//! report metadata, and every string literal is escaped for YARA.
+
 use crate::ghidra_bridge::WisdraReport;
 use std::collections::HashSet;
-use std::fmt::Write; // Advanced idiomatic Rust string formatting
+use std::fmt::Write;
 
-/// YaraGen Z: Advanced Auto-YARA Signature Orchestrator
-/// Generates intelligence-grade YARA rules using strings, API imports, and behavioral opcode patterns.
+const MAX_STRINGS: usize = 15;
+const MIN_STRING_LEN: usize = 6;
+
 pub fn generate_yara_rule(report: &WisdraReport) -> String {
-    let mut rule = String::with_capacity(2048); // Pre-allocate memory for performance
+    let meta = &report.metadata;
+    let is_pe = meta.is_pe();
+    let is_elf = meta.file_format.to_ascii_lowercase().contains("elf");
+    let has_hash = is_real_sha256(&meta.sha256);
 
-    // 1. Sanitize and structure the Rule Name
-    let raw_name = report.metadata.file_name.trim();
-    let safe_rule_name = raw_name.replace(|c: char| !c.is_alphanumeric(), "_");
-    let rule_name = if safe_rule_name.chars().next().map_or(true, |c| c.is_ascii_digit()) {
-        format!("apt_{}", safe_rule_name)
+    let strings = select_strings(&report.strings);
+    let apis: Vec<&str> = if is_pe {
+        report.threat_indicators.suspicious_imports.iter().map(String::as_str).filter(|a| is_identifier(a)).collect()
     } else {
-        format!("YaraGenZ_{}", safe_rule_name)
+        Vec::new()
     };
+    let packed = is_pe && report.threat_indicators.packing_detected;
+    // Without observed strings or imports a heuristic rule would match far too
+    // broadly, so fall back to an exact hash match.
+    let hash_only = strings.is_empty() && apis.is_empty() && has_hash;
 
-    // 2. Build the Meta Block
-    let _ = writeln!(rule, "import \"pe\"");
-    let _ = writeln!(rule, "import \"math\"\n");
-    let _ = writeln!(rule, "rule {} {{", rule_name);
+    let mut rule = String::with_capacity(2048);
+    if is_pe {
+        let _ = writeln!(rule, "import \"pe\"");
+    }
+    if packed {
+        let _ = writeln!(rule, "import \"math\"");
+    }
+    if hash_only {
+        let _ = writeln!(rule, "import \"hash\"");
+    }
+    if !rule.is_empty() {
+        rule.push('\n');
+    }
+
+    let _ = writeln!(rule, "rule {} {{", rule_name(&meta.file_name));
     let _ = writeln!(rule, "    meta:");
-    let _ = writeln!(rule, "        author = \"Wisdra YaraGen Z :: Intelligence Engine\"");
-    let _ = writeln!(rule, "        description = \"Automated behavioral signature for {}\"", raw_name);
-    
-    if !report.metadata.sha256.is_empty() && report.metadata.sha256 != "DUMMY_SHA256" {
-        let _ = writeln!(rule, "        hash = \"{}\"", report.metadata.sha256);
+    let _ = writeln!(rule, "        author = \"Wisdra\"");
+    let _ = writeln!(rule, "        description = \"Auto-generated signature for {}\"", escape(&meta.file_name));
+    if has_hash {
+        let _ = writeln!(rule, "        hash = \"{}\"", meta.sha256);
     }
-    
-    let _ = writeln!(rule, "        date = \"{}\"", report.metadata.analysis_date);
-    let _ = writeln!(rule, "        risk_level = \"{}\"", report.threat_indicators.risk_label);
-    let _ = writeln!(rule, "        generated_by = \"Wisdra P-Code Engine\"");
+    if !meta.analysis_date.is_empty() {
+        let _ = writeln!(rule, "        date = \"{}\"", escape(&meta.analysis_date));
+    }
+    let _ = writeln!(rule, "        risk_level = \"{}\"", escape(&report.threat_indicators.risk_label));
 
-    // 3. Build the Strings Block
-    let _ = writeln!(rule, "\n    strings:");
-    let mut string_idx = 0;
-    let mut added_strings: HashSet<String> = HashSet::new();
-
-    // 3A. Extracted Strings (Deobfuscated & Raw)
-    let safe_strings: Vec<&String> = report.strings.iter()
-        .filter(|s| s.len() >= 5 && s.is_ascii())
-        .take(15)
-        .collect();
-
-    for s in safe_strings {
-        let sanitized = s.replace('\\', "\\\\").replace('"', "\\\"");
-        if added_strings.insert(sanitized.clone()) {
-            let _ = writeln!(rule, "        $s_{:02} = \"{}\" ascii wide nocase", string_idx, sanitized);
-            string_idx += 1;
+    if !strings.is_empty() {
+        let _ = writeln!(rule, "\n    strings:");
+        for (i, s) in strings.iter().enumerate() {
+            let _ = writeln!(rule, "        $s{:02} = \"{}\" ascii wide", i, escape(s));
         }
     }
 
-    // 3B. Behavioral Hex Patterns (Generated from Vulnerabilities/Kill Chains)
-    // In YaraGen Z, we map vulnerabilities to wild-carded assembly (x86_64) signatures.
-    let mut hex_idx = 0;
-    for vuln in &report.vulnerabilities {
-        if vuln.cwe.contains("120") || vuln.cwe.contains("190") {
-            // Memory Corruption / Integer Overflow pattern (mov rax, [rbx]; add eax, 1; push)
-            let _ = writeln!(rule, "        $hex_vuln_{:02} = {{ 48 8B ?? ?? ?? 83 C0 01 50 }}", hex_idx);
-            hex_idx += 1;
-        }
-        if vuln.dangerous_function.contains("memcpy") || vuln.dangerous_function.contains("strcpy") {
-            // Unsafe buffer copy pattern with wildcards
-            let _ = writeln!(rule, "        $hex_buf_{:02} = {{ E8 ?? ?? ?? ?? 48 89 ?? 48 8D ?? }}", hex_idx);
-            hex_idx += 1;
-        }
+    let mut clauses: Vec<String> = Vec::new();
+    if is_pe {
+        clauses.push("uint16(0) == 0x5A4D".into());
+    } else if is_elf {
+        clauses.push("uint32(0) == 0x464C457F".into());
+    }
+    if hash_only {
+        clauses.push(format!("hash.sha256(0, filesize) == \"{}\"", meta.sha256));
+    }
+    if !apis.is_empty() {
+        let ors: Vec<String> = apis.iter().map(|a| format!("pe.imports(/.*/, /^{a}$/)")).collect();
+        clauses.push(format!("(\n            {}\n        )", ors.join(" or\n            ")));
+    }
+    if !strings.is_empty() {
+        let quorum = if strings.len() >= 3 { "2" } else { "any" };
+        clauses.push(format!("{quorum} of ($s*)"));
+    }
+    if packed {
+        clauses.push(
+            "for any section in pe.sections : (math.entropy(section.raw_data_offset, section.raw_data_size) >= 7.2)"
+                .into(),
+        );
+    }
+    if clauses.is_empty() {
+        clauses.push("false // insufficient evidence to build a safe signature".into());
     }
 
-    // 4. Build the Condition Block
     let _ = writeln!(rule, "\n    condition:");
-    let _ = writeln!(rule, "        uint16(0) == 0x5A4D // MZ Header");
-
-    // 4A. PE Imports Conditions
-    let mut api_conditions = Vec::new();
-    for api in &report.threat_indicators.suspicious_imports {
-        api_conditions.push(format!("pe.imports(\".*\", \"{}\")", api));
-    }
-    
-    if !api_conditions.is_empty() {
-        let _ = writeln!(rule, "        and (");
-        let _ = writeln!(rule, "            {}", api_conditions.join(" or\n            "));
-        let _ = writeln!(rule, "        )");
-    }
-
-    // 4B. String & Hex Matching Logic
-    if string_idx > 0 || hex_idx > 0 {
-        let _ = writeln!(rule, "        and (");
-        if report.threat_indicators.risk_label == "CRITICAL" {
-            let threshold = std::cmp::max(1, (string_idx + hex_idx) / 3);
-            let _ = writeln!(rule, "            {} of ($s_*, $hex_*)", threshold);
-        } else {
-            let _ = writeln!(rule, "            any of ($s_*, $hex_*)");
-        }
-        let _ = writeln!(rule, "        )");
-    }
-
-    // 4C. Packing & Entropy Logic
-    if report.threat_indicators.packing_detected {
-        let _ = writeln!(rule, "        and (math.entropy(0, filesize) >= 7.0) // Packed or Encrypted");
-    }
-
+    let _ = writeln!(rule, "        {}", clauses.join("\n        and "));
     let _ = writeln!(rule, "}}");
     rule
+}
+
+fn select_strings(strings: &[String]) -> Vec<&str> {
+    let mut seen = HashSet::new();
+    strings
+        .iter()
+        .map(|s| s.trim())
+        .filter(|s| s.len() >= MIN_STRING_LEN && s.chars().all(|c| c.is_ascii_graphic() || c == ' '))
+        .filter(|s| seen.insert(*s))
+        .take(MAX_STRINGS)
+        .collect()
+}
+
+/// YARA identifiers: `[A-Za-z_][A-Za-z0-9_]*`, max 128 chars.
+fn rule_name(file_name: &str) -> String {
+    let body: String =
+        file_name.trim().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).take(120).collect();
+    format!("wisdra_{body}")
+}
+
+fn is_identifier(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+fn is_real_sha256(s: &str) -> bool {
+    s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Escape text for a YARA double-quoted string literal.
+fn escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_ascii_graphic() || c == ' ' => out.push(c),
+            c => {
+                let mut buf = [0u8; 4];
+                for b in c.encode_utf8(&mut buf).bytes() {
+                    let _ = write!(out, "\\x{b:02X}");
+                }
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ghidra_bridge::tests::sample;
+
+    #[test]
+    fn pe_rule_uses_regex_imports_and_no_fabricated_hex() {
+        let rule = generate_yara_rule(&sample());
+        assert!(rule.contains("pe.imports(/.*/, /^VirtualAlloc$/)"));
+        assert!(!rule.contains("$hex"));
+        assert!(rule.contains("uint16(0) == 0x5A4D"));
+        assert!(rule.contains("math.entropy(section.raw_data_offset"));
+        assert!(!rule.contains("hash = \"DUMMY_SHA256\""));
+    }
+
+    #[test]
+    fn strings_are_escaped_and_short_ones_dropped() {
+        let rule = generate_yara_rule(&sample());
+        assert!(rule.contains(r#""C:\\Users\\\"quoted\"" ascii wide"#));
+        assert!(!rule.contains("\"abc\""));
+    }
+
+    #[test]
+    fn elf_rule_has_elf_magic_and_no_pe_module() {
+        let mut r = sample();
+        r.metadata.file_format = "Executable and Linking Format (ELF)".into();
+        let rule = generate_yara_rule(&r);
+        assert!(rule.contains("uint32(0) == 0x464C457F"));
+        assert!(!rule.contains("import \"pe\""));
+        assert!(!rule.contains("pe.imports"));
+    }
+
+    #[test]
+    fn no_evidence_falls_back_to_exact_hash() {
+        let mut r = sample();
+        r.strings.clear();
+        r.threat_indicators.suspicious_imports.clear();
+        r.metadata.sha256 = "a".repeat(64);
+        let rule = generate_yara_rule(&r);
+        assert!(rule.contains(&format!("hash.sha256(0, filesize) == \"{}\"", "a".repeat(64))));
+    }
+
+    #[test]
+    fn rule_name_is_a_valid_identifier() {
+        assert_eq!(rule_name("1 bad-näme.exe"), "wisdra_1_bad_n_me_exe");
+    }
 }

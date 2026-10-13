@@ -1,84 +1,119 @@
-use crate::ghidra_bridge::run_headless_analysis;
+//! Radar bulk triage: analyze a directory of samples with a bounded worker
+//! pool and cluster results by behavioral profile.
+
+use crate::ghidra_bridge::{GhidraOptions, run_headless_analysis};
+use anyhow::{Context, bail};
 use rayon::prelude::*;
-use std::collections::HashMap;
+use serde::Serialize;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-/// The Radar Bulk Triage Engine
-/// Scans entire directories concurrently and clusters files based on behavioral heuristics.
-pub fn run_bulk_triage(directory: &str, ghidra_path: &str) -> Result<(), String> {
-    println!("\n[*] Initializing Wisdra Radar (Bulk Triage Engine)...");
-    
-    let mut targets = Vec::new();
-    for entry in WalkDir::new(directory).into_iter().filter_map(|e| e.ok()) {
-        if entry.path().is_file() {
-            if let Some(ext) = entry.path().extension() {
-                let ext_str = ext.to_string_lossy().to_lowercase();
-                if ext_str == "exe" || ext_str == "dll" || ext_str == "sys" || ext_str == "bin" {
-                    targets.push(entry.path().to_path_buf());
-                }
-            }
-        }
-    }
-    
-    if targets.is_empty() {
-        return Err(format!("No executable files found in {}", directory));
-    }
-    
-    println!("[+] Found {} potential targets. Initiating parallel analysis...", targets.len());
-    
-    // Process files in parallel using Rayon.
-    // Ghidra is heavy, Rayon will bound the threads to the CPU core count automatically.
-    let reports: Vec<_> = targets.par_iter()
-        .map(|target| {
-            println!("    [>] Scanning: {}", target.display());
-            let result = run_headless_analysis(target.to_str().unwrap(), ghidra_path);
-            (target.clone(), result)
+const EXTENSIONS: &[&str] = &["exe", "dll", "sys", "bin", "elf", "so", "scr", "ocx"];
+
+#[derive(Debug, Serialize)]
+pub struct TriageEntry {
+    pub path: PathBuf,
+    pub sha256: Option<String>,
+    pub risk_label: Option<String>,
+    pub risk_score: Option<u32>,
+    pub cluster: Option<String>,
+    pub report: Option<PathBuf>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TriageSummary {
+    pub scanned: usize,
+    pub failed: usize,
+    pub clusters: BTreeMap<String, Vec<PathBuf>>,
+    pub entries: Vec<TriageEntry>,
+}
+
+/// Run triage with at most `jobs` concurrent Ghidra instances (each is a JVM
+/// using 1-4 GB, so this is deliberately not tied to the CPU count).
+pub fn run_bulk_triage(directory: &Path, opts: &GhidraOptions, jobs: usize) -> anyhow::Result<TriageSummary> {
+    let targets: Vec<PathBuf> = WalkDir::new(directory)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.into_path())
+        .filter(|p| {
+            p.extension().is_some_and(|ext| EXTENSIONS.contains(&ext.to_string_lossy().to_lowercase().as_str()))
         })
         .collect();
-        
-    // Grouping Logic (Threat Actor Clustering)
-    let mut actor_groups: HashMap<String, Vec<String>> = HashMap::new();
-    let mut successful_scans = 0;
-    
-    for (target_path, result) in reports {
-        match result {
-            Ok(report) => {
-                successful_scans += 1;
-                // Heuristic Clustering: Cluster based on Risk, Packing, and top suspicious API
-                let top_api = report.threat_indicators.suspicious_imports.first()
-                    .map(|s| s.as_str())
-                    .unwrap_or("NoSuspiciousAPIs");
-                    
-                let group_key = format!("Risk:{}_Packed:{}_TopAPI:{}", 
-                    report.threat_indicators.risk_label, 
-                    report.threat_indicators.packing_detected,
-                    top_api
-                );
-                
-                actor_groups.entry(group_key).or_insert_with(Vec::new)
-                    .push(target_path.file_name().unwrap().to_str().unwrap().to_string());
-            },
-            Err(e) => {
-                eprintln!("    [-] Failed to analyze {}: {}", target_path.display(), e);
-            }
+
+    if targets.is_empty() {
+        bail!("no candidate binaries ({}) found in {}", EXTENSIONS.join(", "), directory.display());
+    }
+    println!("[+] {} target(s), {} concurrent job(s)", targets.len(), jobs);
+
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(jobs.max(1)).build().context("building worker pool")?;
+    let entries: Vec<TriageEntry> = pool.install(|| {
+        targets
+            .par_iter()
+            .map(|target| {
+                println!("    [>] {}", target.display());
+                match run_headless_analysis(target, opts) {
+                    Ok(a) => TriageEntry {
+                        path: target.clone(),
+                        sha256: Some(a.report.metadata.sha256.clone()),
+                        risk_label: Some(a.report.threat_indicators.risk_label.clone()),
+                        risk_score: Some(a.report.threat_indicators.risk_score),
+                        cluster: Some(cluster_key(&a.report)),
+                        report: Some(a.report_path),
+                        error: None,
+                    },
+                    Err(e) => {
+                        eprintln!("    [-] {}: {e}", target.display());
+                        TriageEntry {
+                            path: target.clone(),
+                            sha256: None,
+                            risk_label: None,
+                            risk_score: None,
+                            cluster: None,
+                            report: None,
+                            error: Some(e.to_string()),
+                        }
+                    }
+                }
+            })
+            .collect()
+    });
+
+    let mut clusters: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
+    let mut failed = 0;
+    for e in &entries {
+        match &e.cluster {
+            Some(key) => clusters.entry(key.clone()).or_default().push(e.path.clone()),
+            None => failed += 1,
         }
     }
-    
+
+    Ok(TriageSummary { scanned: entries.len() - failed, failed, clusters, entries })
+}
+
+/// Heuristic profile: risk label, packing, and the top suspicious API.
+fn cluster_key(r: &crate::ghidra_bridge::WisdraReport) -> String {
+    let top_api = r.threat_indicators.suspicious_imports.first().map_or("none", String::as_str);
+    format!(
+        "risk={} packed={} top_api={}",
+        r.threat_indicators.risk_label, r.threat_indicators.packing_detected, top_api
+    )
+}
+
+pub fn print_summary(summary: &TriageSummary) {
     println!("\n============================================================");
     println!("[ WISDRA RADAR :: THREAT CLUSTERING REPORT ]");
     println!("============================================================");
-    println!("Total Scanned: {}", successful_scans);
-    
-    for (cluster, files) in actor_groups {
-        println!("\n[ Cluster Profile: {} ]", cluster);
-        println!("  |- Members ({}):", files.len());
+    println!("Scanned: {}   Failed: {}", summary.scanned, summary.failed);
+    for (cluster, files) in &summary.clusters {
+        println!("\n[ {cluster} ]  ({} member(s))", files.len());
         for f in files.iter().take(5) {
-            println!("      - {}", f);
+            println!("    - {}", f.display());
         }
         if files.len() > 5 {
-            println!("      - ... and {} more", files.len() - 5);
+            println!("    - ... and {} more", files.len() - 5);
         }
     }
-    
-    Ok(())
 }
