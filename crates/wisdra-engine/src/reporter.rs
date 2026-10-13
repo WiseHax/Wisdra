@@ -1,4 +1,4 @@
-use crate::ghidra_bridge::WisdraReport;
+use crate::model::WisdraReport;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};

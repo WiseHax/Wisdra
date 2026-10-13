@@ -1,11 +1,12 @@
 //! Radar bulk triage: analyze a directory of samples with a bounded worker
 //! pool and cluster results by behavioral profile.
 
-use crate::ghidra_bridge::{GhidraOptions, run_headless_analysis};
+use crate::Engine;
 use anyhow::{Context, bail};
 use rayon::prelude::*;
 use serde::Serialize;
 use std::collections::BTreeMap;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -30,17 +31,15 @@ pub struct TriageSummary {
     pub entries: Vec<TriageEntry>,
 }
 
-/// Run triage with at most `jobs` concurrent Ghidra instances (each is a JVM
-/// using 1-4 GB, so this is deliberately not tied to the CPU count).
-pub fn run_bulk_triage(directory: &Path, opts: &GhidraOptions, jobs: usize) -> anyhow::Result<TriageSummary> {
+/// Run triage with at most `jobs` concurrent analyses. For the Ghidra engine
+/// each job is a JVM using 1-4 GB, so keep `jobs` small; native jobs are cheap.
+pub fn run_bulk_triage(directory: &Path, engine: &Engine, jobs: usize) -> anyhow::Result<TriageSummary> {
     let targets: Vec<PathBuf> = WalkDir::new(directory)
         .into_iter()
         .filter_map(Result::ok)
         .filter(|e| e.file_type().is_file())
         .map(|e| e.into_path())
-        .filter(|p| {
-            p.extension().is_some_and(|ext| EXTENSIONS.contains(&ext.to_string_lossy().to_lowercase().as_str()))
-        })
+        .filter(|p| is_candidate(p))
         .collect();
 
     if targets.is_empty() {
@@ -53,15 +52,15 @@ pub fn run_bulk_triage(directory: &Path, opts: &GhidraOptions, jobs: usize) -> a
         targets
             .par_iter()
             .map(|target| {
-                println!("    [>] {}", target.display());
-                match run_headless_analysis(target, opts) {
-                    Ok(a) => TriageEntry {
+                tracing::info!("analyzing {}", target.display());
+                match engine.analyze(target) {
+                    Ok((report, report_path)) => TriageEntry {
                         path: target.clone(),
-                        sha256: Some(a.report.metadata.sha256.clone()),
-                        risk_label: Some(a.report.threat_indicators.risk_label.clone()),
-                        risk_score: Some(a.report.threat_indicators.risk_score),
-                        cluster: Some(cluster_key(&a.report)),
-                        report: Some(a.report_path),
+                        sha256: Some(report.metadata.sha256.clone()),
+                        risk_label: Some(report.threat_indicators.risk_label.clone()),
+                        risk_score: Some(report.threat_indicators.risk_score),
+                        cluster: Some(cluster_key(&report)),
+                        report: Some(report_path),
                         error: None,
                     },
                     Err(e) => {
@@ -93,8 +92,25 @@ pub fn run_bulk_triage(directory: &Path, opts: &GhidraOptions, jobs: usize) -> a
     Ok(TriageSummary { scanned: entries.len() - failed, failed, clusters, entries })
 }
 
-/// Heuristic profile: risk label, packing, and the top suspicious API.
-fn cluster_key(r: &crate::ghidra_bridge::WisdraReport) -> String {
+/// A file is a candidate if it has a known executable extension or starts
+/// with a PE (`MZ`), ELF or Mach-O magic number.
+fn is_candidate(path: &Path) -> bool {
+    if path.extension().is_some_and(|ext| EXTENSIONS.contains(&ext.to_string_lossy().to_lowercase().as_str())) {
+        return true;
+    }
+    let mut magic = [0u8; 4];
+    let ok = std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut magic)).is_ok();
+    ok && (magic.starts_with(b"MZ")
+        || magic == [0x7F, b'E', b'L', b'F']
+        || matches!(u32::from_be_bytes(magic), 0xFEEDFACE | 0xFEEDFACF | 0xCEFAEDFE | 0xCFFAEDFE | 0xCAFEBABE))
+}
+
+/// Cluster by import hash when available (strong family signal), otherwise
+/// by a heuristic profile: risk label, packing, and the top suspicious API.
+fn cluster_key(r: &crate::model::WisdraReport) -> String {
+    if let Some(h) = r.binary.as_ref().and_then(|b| b.imphash.as_deref()) {
+        return format!("imphash={h}");
+    }
     let top_api = r.threat_indicators.suspicious_imports.first().map_or("none", String::as_str);
     format!(
         "risk={} packed={} top_api={}",

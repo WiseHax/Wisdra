@@ -1,4 +1,3 @@
-use crate::ghidra_bridge::WisdraReport;
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
@@ -12,6 +11,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Row, Table},
 };
 use std::{error::Error, io};
+use wisdra_engine::model::WisdraReport;
 
 pub fn render_dashboard(report: &WisdraReport) -> Result<(), Box<dyn Error>> {
     // Setup terminal
@@ -85,7 +85,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, report: &WisdraReport) -> io:
                 _ => Color::Green,
             };
 
-            let mitre_mappings = crate::mitre::map_to_mitre(report);
+            let mitre_mappings = wisdra_engine::mitre::map_to_mitre(report);
             let mut mitre_summary = String::new();
             if !mitre_mappings.is_empty() {
                 mitre_summary.push_str("\nMITRE ATT&CK:\n");
