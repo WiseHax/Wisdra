@@ -1,12 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["wisdra_core"]
+members = ["crates/*"]
 # ExposureZ3 lives in its own repository (https://github.com/WiseHax/ExposureZ3)
 # and is invoked as an optional external binary by `wisdra analyze --verify`.
 exclude = ["ExposureZ3"]
 
 [workspace.package]
-version = "2.1.0"
+version = "2.2.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Wxse"]
